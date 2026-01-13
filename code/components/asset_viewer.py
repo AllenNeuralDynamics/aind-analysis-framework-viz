@@ -104,67 +104,88 @@ class AssetViewer:
 
     def create_viewer(
         self,
-        record_id_param,
+        record_ids_param,
         df_param,
         id_column: str = "_id",
     ) -> pn.Column:
         """
-        Create a reactive asset viewer.
+        Create a reactive asset viewer for multiple records.
 
         Args:
-            record_id_param: Parameter containing selected record ID
+            record_ids_param: Parameter containing list of selected record IDs
             df_param: Parameter containing the DataFrame
             id_column: Column name for record ID
 
         Returns:
             Panel Column that updates when selection changes
         """
-        def render_asset(record_id, df):
-            if not record_id or df is None or df.empty:
+        def render_assets(record_ids, df):
+            if not record_ids or df is None or df.empty:
                 return pn.pane.Markdown(
-                    "Select a record to view its assets.",
+                    "Select one or more records to view their assets.",
                     css_classes=["alert", "alert-info", "p-3"],
                 )
 
-            # Find the record
-            mask = df[id_column].astype(str) == str(record_id)
-            if not mask.any():
-                return pn.pane.Markdown(
-                    f"Record {record_id} not found.",
-                    css_classes=["alert", "alert-warning", "p-3"],
+            # Render assets for all selected records
+            asset_panels = []
+            for record_id in record_ids:
+                # Find the record
+                mask = df[id_column].astype(str) == str(record_id)
+                if not mask.any():
+                    asset_panels.append(
+                        pn.pane.Markdown(
+                            f"Record {record_id} not found.",
+                            css_classes=["alert", "alert-warning", "p-3"],
+                        )
+                    )
+                    continue
+
+                record = df[mask].iloc[0]
+                s3_location = record.get(self.s3_location_column, "")
+
+                if not s3_location:
+                    asset_panels.append(
+                        pn.pane.Markdown(
+                            f"No S3 location available for record {record_id}.",
+                            css_classes=["alert", "alert-warning", "p-3"],
+                        )
+                    )
+                    continue
+
+                asset_url = self.get_asset_url(s3_location)
+
+                if not asset_url:
+                    asset_panels.append(
+                        pn.pane.Markdown(
+                            f"Could not construct asset URL for record {record_id}.",
+                            css_classes=["alert", "alert-danger", "p-3"],
+                        )
+                    )
+                    continue
+
+                # Build info panel
+                info_items = []
+                for col in ["subject_id", "session_date", "agent_alias", "n_trials"]:
+                    if col in record.index:
+                        info_items.append(f"**{col}:** {record[col]}")
+
+                # Add this record's asset panel
+                asset_panels.append(
+                    pn.Column(
+                        pn.pane.Markdown(f"### Record: {record_id}"),
+                        pn.pane.Markdown(" | ".join(info_items)) if info_items else None,
+                        pn.pane.PNG(asset_url, width=self.width, alt_text=f"Asset for {record_id}"),
+                        pn.layout.Divider(),
+                        sizing_mode="stretch_width",
+                    )
                 )
 
-            record = df[mask].iloc[0]
-            s3_location = record.get(self.s3_location_column, "")
-
-            if not s3_location:
-                return pn.pane.Markdown(
-                    "No S3 location available for this record.",
-                    css_classes=["alert", "alert-warning", "p-3"],
-                )
-
-            asset_url = self.get_asset_url(s3_location)
-
-            if not asset_url:
-                return pn.pane.Markdown(
-                    "Could not construct asset URL.",
-                    css_classes=["alert", "alert-danger", "p-3"],
-                )
-
-            # Build info panel
-            info_items = []
-            for col in ["subject_id", "session_date", "agent_alias", "n_trials"]:
-                if col in record.index:
-                    info_items.append(f"**{col}:** {record[col]}")
-
-            return pn.Column(
-                pn.pane.Markdown(f"### Record: {record_id}"),
-                pn.pane.Markdown(" | ".join(info_items)) if info_items else None,
-                pn.pane.PNG(asset_url, width=self.width, alt_text=f"Asset for {record_id}"),
-                sizing_mode="stretch_width",
+            return pn.Column(*asset_panels, sizing_mode="stretch_width") if asset_panels else pn.pane.Markdown(
+                "No assets to display.",
+                css_classes=["alert", "alert-warning", "p-3"],
             )
 
-        return pn.bind(render_asset, record_id_param, df_param)
+        return pn.bind(render_assets, record_ids_param, df_param)
 
 
 def create_image_tooltip(

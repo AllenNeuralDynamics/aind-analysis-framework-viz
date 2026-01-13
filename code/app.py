@@ -30,7 +30,7 @@ curdoc().title = "Dynamic Foraging Model Fitting Explorer"
 class DataHolder(param.Parameterized):
     """Central state container for reactive updates."""
 
-    selected_record_id = param.String(default="", doc="Currently selected record _id")
+    selected_record_ids = param.List(default=[], doc="List of currently selected record IDs")
     filtered_df = param.DataFrame(doc="Filtered DataFrame")
 
 
@@ -181,7 +181,7 @@ class DynamicForagingApp(param.Parameterized):
 
         table = pn.widgets.Tabulator(
             df[display_cols],
-            selectable=1,
+            selectable="checkbox",
             disabled=True,
             frozen_columns=["_id", "subject_id"],
             header_filters=True,
@@ -194,10 +194,16 @@ class DynamicForagingApp(param.Parameterized):
         # Handle row selection
         def on_selection(event):
             if event.new:
-                idx = event.new[0]
-                record_id = str(df.iloc[idx]["_id"])
-                logger.info(f"Selected record: {record_id}")
-                self.data_holder.selected_record_id = record_id
+                # Get IDs from all selected indices
+                selected_ids = []
+                for idx in event.new:
+                    record_id = str(df.iloc[idx]["_id"])
+                    selected_ids.append(record_id)
+                logger.info(f"Selected records: {selected_ids}")
+                self.data_holder.selected_record_ids = selected_ids
+            else:
+                logger.info("No records selected")
+                self.data_holder.selected_record_ids = []
 
         table.param.watch(on_selection, "selection")
 
@@ -213,7 +219,7 @@ class DynamicForagingApp(param.Parameterized):
 
         # Reactive asset viewer
         asset_display = self.asset_viewer.create_viewer(
-            record_id_param=self.data_holder.param.selected_record_id,
+            record_ids_param=self.data_holder.param.selected_record_ids,
             df_param=self.data_holder.param.filtered_df,
             id_column="_id",
         )
@@ -230,10 +236,10 @@ class DynamicForagingApp(param.Parameterized):
         return pn.Column(
             count_display,
             pn.pane.Markdown("### Records"),
-            pn.pane.Markdown("*Click a row to view its fitted session figure*"),
+            pn.pane.Markdown("*Select one or more rows to view their fitted session figures*"),
             table,
             pn.layout.Divider(),
-            pn.pane.Markdown("### Selected Record Asset"),
+            pn.pane.Markdown("### Selected Record Assets"),
             asset_display,
             sizing_mode="stretch_width",
         )
@@ -243,11 +249,11 @@ class DynamicForagingApp(param.Parameterized):
         return [
             pn.pane.Markdown("### Selected"),
             pn.bind(
-                lambda id: pn.pane.Markdown(
-                    f"**ID:** `{id[:20]}...`" if id and len(id) > 20 else f"**ID:** {id or 'None'}",
+                lambda ids: pn.pane.Markdown(
+                    f"**Count:** {len(ids)}" if ids else "**Count:** 0",
                     css_classes=["alert", "alert-secondary", "p-2"],
                 ),
-                id=self.data_holder.param.selected_record_id,
+                ids=self.data_holder.param.selected_record_ids,
             ),
             pn.pane.Markdown("### Stats"),
             pn.bind(

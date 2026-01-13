@@ -16,10 +16,10 @@ def run():
     """Start the Panel server."""
     cmd = [
         sys.executable, "-m", "panel", "serve",
-        "code/app.py",
         "--address", "0.0.0.0",
         "--port", "7860",
         "--allow-websocket-origin=*",
+        "--dev",
     ]
     subprocess.run(cmd)
 

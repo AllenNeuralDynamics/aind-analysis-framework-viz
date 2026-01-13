@@ -34,7 +34,7 @@ class DataTable:
         display_columns: Optional[List[str]] = None,
         frozen_columns: Optional[List[str]] = None,
         groupby: Optional[List[str]] = None,
-        on_selection: Optional[Callable[[str], None]] = None,
+        on_selection: Optional[Callable[[List[str]], None]] = None,
         id_column: str = "_id",
         height: int = 400,
     ):
@@ -46,7 +46,7 @@ class DataTable:
             display_columns: Columns to show (default: all)
             frozen_columns: Columns to freeze on left
             groupby: Columns to group by
-            on_selection: Callback when row is selected, receives record ID
+            on_selection: Callback when rows are selected, receives list of record IDs
             id_column: Column name for record identifier
             height: Table height in pixels
         """
@@ -78,7 +78,7 @@ class DataTable:
 
         self._tabulator = pn.widgets.Tabulator(
             display_df,
-            selectable=1,
+            selectable="checkbox",
             disabled=True,
             frozen_columns=[c for c in self.frozen_columns if c in cols_to_show],
             groupby=[c for c in self.groupby if c in cols_to_show] or None,
@@ -94,11 +94,16 @@ class DataTable:
         if self.on_selection:
             def handle_selection(event):
                 if event.new:
-                    selected_index = event.new[0]
-                    # Get the ID from the original (possibly filtered) dataframe
+                    # Get IDs from all selected indices
+                    selected_ids = []
                     if self.id_column in data.columns:
-                        record_id = str(data.iloc[selected_index][self.id_column])
-                        self.on_selection(record_id)
+                        for selected_index in event.new:
+                            record_id = str(data.iloc[selected_index][self.id_column])
+                            selected_ids.append(record_id)
+                    self.on_selection(selected_ids)
+                else:
+                    # No selection
+                    self.on_selection([])
 
             self._tabulator.param.watch(handle_selection, "selection")
 
