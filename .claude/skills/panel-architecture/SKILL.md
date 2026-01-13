@@ -1,3 +1,8 @@
+---
+name: panel-architecture
+description: Best practices for building Panel visualization apps at AIND using param.Parameterized classes, reactive binding with pn.bind(), and component patterns. Use when building or refactoring Panel applications.
+---
+
 # Panel Application Architecture
 
 This skill captures best practices for building Panel visualization apps at AIND.

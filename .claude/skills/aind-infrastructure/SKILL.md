@@ -1,3 +1,8 @@
+---
+name: aind-infrastructure
+description: Knowledge about AIND data infrastructure including MongoDB/DocumentDB access patterns, S3 asset storage, collection schemas, and query patterns. Use when working with AIND analysis results, querying metadata, or accessing stored assets.
+---
+
 # AIND Analysis Infrastructure
 
 This skill captures knowledge about the Allen Institute for Neural Dynamics (AIND) data infrastructure for analysis results.
