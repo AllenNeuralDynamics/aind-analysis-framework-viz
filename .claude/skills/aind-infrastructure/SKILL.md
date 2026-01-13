@@ -58,25 +58,124 @@ Most collections include:
 
 ### Two Pipeline Formats
 
-AIND has two analysis pipeline formats:
+AIND has two analysis pipeline formats with different document structures:
 
-1. **AIND Analysis Framework** (new):
-   - Nested structure: `processing.data_processes.output_parameters.*`
-   - S3 location in `location` field
+#### 1. Prototype Pipeline (older format)
 
-2. **Prototype pipeline** (older):
-   - Flat structure: fields at root level
-   - S3 location constructed from `_id`
+Flat structure with fields at root level:
 
-When querying, use MongoDB projection aliasing to normalize:
-```python
-projection = {
-    "_id": 1,
-    "subject_id": "$processing.data_processes.output_parameters.subject_id",  # New
-    # OR
-    "subject_id": 1,  # Old (field at root)
+```json
+{
+  "_id": "fe96ff6c9e7b...",  // SHA256 hash
+  "subject_id": "744040",
+  "session_date": "2024-12-09",
+  "status": "success",
+  "s3_location": "s3://aind-dynamic-foraging-analysis-prod-o5171v/fe96ff6c...",
+  "analysis_datetime": "2025-01-18T05:14:46.722265",
+  "nwb_name": "744040_2024-12-09_13-30-23.nwb",
+  "analysis_spec": {
+    "analysis_name": "MLE fitting",
+    "analysis_args": { ... }
+  },
+  "analysis_results": {
+    "fit_settings": { "agent_alias": "QLearning_L1F1_CK1_softmax", ... },
+    "params": { ... },
+    "log_likelihood": -144.83,
+    "AIC": 299.67,
+    "BIC": 319.50,
+    "n_trials": 390,
+    "prediction_accuracy": 0.807,
+    "cross_validation": { ... }
+  }
 }
 ```
+
+**Key paths:**
+- `subject_id` → root level
+- `session_date` → root level
+- `status` → root level
+- S3 location → `s3_location`
+- Fitting results → `analysis_results.*`
+- Agent alias → `analysis_results.fit_settings.agent_alias`
+
+#### 2. AIND Analysis Framework (new format)
+
+Nested structure following `aind-data-schema`:
+
+```json
+{
+  "_id": "d2a652c73ee8420a...",  // Shorter UUID
+  "object_type": "Metadata",
+  "name": "7d9b907880012b65...",
+  "location": "s3://aind-analysis-prod-o5171v/dynamic-foraging-model-fitting/7d9b...",
+  "processing": {
+    "data_processes": [
+      {
+        "name": "han_df_mle_aind-analysis-wrapper",
+        "start_date_time": "2026-01-10T04:07:11",
+        "output_parameters": {
+          "additional_info": "success",
+          "subject_id": "781575",
+          "session_date": "2025-07-14",
+          "nwb_name": "behavior_781575_2025-07-14_21-41-11.nwb",
+          "fitting_results": {
+            "fit_settings": { "agent_alias": "ForagingCompareThreshold", ... },
+            "params": { ... },
+            "log_likelihood": -272.10,
+            "AIC": 552.20,
+            "BIC": 569.34,
+            "n_trials": 536,
+            "prediction_accuracy": 0.783,
+            "cross_validation": { ... }
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+**Key paths:**
+- `subject_id` → `processing.data_processes[0].output_parameters.subject_id`
+- `session_date` → `processing.data_processes[0].output_parameters.session_date`
+- `status` → `processing.data_processes[0].output_parameters.additional_info`
+- S3 location → `location`
+- Fitting results → `processing.data_processes[0].output_parameters.fitting_results.*`
+- Agent alias → `processing.data_processes[0].output_parameters.fitting_results.fit_settings.agent_alias`
+
+#### Field Mapping Summary
+
+| Field | Old Format | New Format |
+|-------|-----------|------------|
+| subject_id | `subject_id` | `processing.data_processes[0].output_parameters.subject_id` |
+| session_date | `session_date` | `processing.data_processes[0].output_parameters.session_date` |
+| status | `status` | `processing.data_processes[0].output_parameters.additional_info` |
+| S3 location | `s3_location` | `location` |
+| agent_alias | `analysis_results.fit_settings.agent_alias` | `processing.data_processes[0].output_parameters.fitting_results.fit_settings.agent_alias` |
+| n_trials | `analysis_results.n_trials` | `processing.data_processes[0].output_parameters.fitting_results.n_trials` |
+| AIC/BIC | `analysis_results.AIC/BIC` | `processing.data_processes[0].output_parameters.fitting_results.AIC/BIC` |
+
+#### Querying Both Formats
+
+Use MongoDB projection aliasing to normalize fields:
+
+```python
+# Query that works for both formats
+projection = {
+    "_id": 1,
+    # Old format fields
+    "subject_id": 1,
+    "session_date": 1,
+    "status": 1,
+    "s3_location": 1,
+    # New format fields (aliased)
+    "subject_id_new": "$processing.data_processes.output_parameters.subject_id",
+    "session_date_new": "$processing.data_processes.output_parameters.session_date",
+    "location": 1,
+}
+```
+
+The `aind-analysis-arch-result-access` package handles this automatically by querying both formats and merging results into a unified DataFrame.
 
 ## S3 Access
 
