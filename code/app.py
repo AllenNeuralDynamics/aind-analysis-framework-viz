@@ -7,7 +7,9 @@ To run:
     panel serve code/app.py --dev --show
 """
 
+import json
 import logging
+from datetime import datetime, timedelta
 
 import pandas as pd
 import panel as pn
@@ -61,20 +63,25 @@ class DynamicForagingApp(param.Parameterized):
         logger.info("Loading data from MongoDB...")
         self._load_data()
 
-    def _load_data(self):
+    def _get_default_query(self) -> dict:
+        """Get default DocDB query for recent 3 months of data."""
+        three_months_ago = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+        return {"session_date": {"$gte": three_months_ago}}
+
+    def _load_data(self, custom_query: dict = None) -> str:
         """Load data from the dynamic-foraging-model-fitting collection."""
+        query = custom_query if custom_query else self._get_default_query()
         try:
-            # Use the existing result access package
-            # For prototype: query single subject for faster loading
+            logger.info(f"Loading data with query: {query}")
             self.df_full = get_mle_model_fitting(
-                subject_id="778869",  # Single subject for fast prototype
+                from_custom_query=query,
                 if_include_metrics=True,
-                if_include_latent_variables=False,  # Skip for faster loading
+                if_include_latent_variables=False,
                 if_download_figures=False,
                 paginate_settings={"paginate": False},
             )
 
-            if self.df_full is not None:
+            if self.df_full is not None and not self.df_full.empty:
                 logger.info(f"Loaded {len(self.df_full)} records")
 
                 # Add asset URL column for hover tooltips
@@ -83,15 +90,18 @@ class DynamicForagingApp(param.Parameterized):
                 )
 
                 self.data_holder.filtered_df = self.df_full.copy()
+                return f"Loaded {len(self.df_full)} records"
             else:
                 logger.warning("No data returned from query")
                 self.df_full = pd.DataFrame()
                 self.data_holder.filtered_df = pd.DataFrame()
+                return "No data returned from query"
 
         except Exception as e:
             logger.error(f"Failed to load data: {e}")
             self.df_full = pd.DataFrame()
             self.data_holder.filtered_df = pd.DataFrame()
+            return f"Error: {e}"
 
     def _get_display_columns(self) -> list:
         """Columns to show in the main table."""
@@ -140,11 +150,11 @@ class DynamicForagingApp(param.Parameterized):
         reset_button = pn.widgets.Button(name="Reset", button_type="light", width=80)
         status = pn.pane.Markdown("", css_classes=["alert", "alert-info", "p-2"])
 
-        def apply_callback(event):
+        def apply_callback(_event):
             result = self.apply_global_filter(filter_query.value)
             status.object = result
 
-        def reset_callback(event):
+        def reset_callback(_event):
             filter_query.value = ""
             result = self.apply_global_filter("")
             status.object = result
@@ -153,19 +163,25 @@ class DynamicForagingApp(param.Parameterized):
         reset_button.on_click(reset_callback)
 
         examples = """
-            **Example queries:**
-            - `subject_id == '730945'`
-            - `n_trials > 200`
-            - `agent_alias.str.contains('QLearning')`
-            - `prediction_accuracy > 0.6`
-        """
+**Example queries:**
+- `subject_id == '730945'`
+- `n_trials > 200`
+- `agent_alias.str.contains('QLearning')`
+- `prediction_accuracy > 0.6`
+"""
+
+        examples_card = pn.Card(
+            pn.pane.Markdown(examples),
+            title="Example Queries",
+            collapsed=True,
+        )
 
         return pn.Column(
             pn.pane.Markdown("### Global Filter"),
-            pn.pane.Markdown(examples),
             filter_query,
             pn.Row(filter_button, reset_button),
             status,
+            examples_card,
             sizing_mode="stretch_width",
         )
 
@@ -242,10 +258,60 @@ class DynamicForagingApp(param.Parameterized):
             sizing_mode="stretch_width",
         )
 
+    def create_docdb_query_panel(self) -> pn.Column:
+        """Create the DocDB query panel for data loading."""
+        default_query = json.dumps(self._get_default_query(), indent=2)
+
+        docdb_query = pn.widgets.TextAreaInput(
+            name="DocDB Query (JSON)",
+            value=default_query,
+            placeholder='e.g., {"subject_id": "778869"}',
+            height=100,
+            sizing_mode="stretch_width",
+        )
+
+        reload_button = pn.widgets.Button(name="Reload Data", button_type="primary", width=120)
+        status = pn.pane.Markdown("", css_classes=["alert", "alert-info", "p-2"])
+
+        def reload_callback(_event):
+            try:
+                query = json.loads(docdb_query.value)
+                result = self._load_data(custom_query=query)
+                status.object = result
+            except json.JSONDecodeError as e:
+                status.object = f"Invalid JSON: {e}"
+
+        reload_button.on_click(reload_callback)
+
+        examples = """
+**Example queries:**
+- `{"subject_id": "778869"}`
+- `{"session_date": {"$gte": "2024-10-01"}}`
+- `{"n_trials": {"$gt": 200}}`
+"""
+
+        examples_card = pn.Card(
+            pn.pane.Markdown(examples),
+            title="Example Queries",
+            collapsed=True,
+        )
+
+        return pn.Column(
+            pn.pane.Markdown("### DocDB Query"),
+            docdb_query,
+            reload_button,
+            status,
+            examples_card,
+            sizing_mode="stretch_width",
+        )
+
     def create_sidebar(self) -> pn.Column:
         """Create sidebar content."""
         return pn.Column(
+            self.create_docdb_query_panel(),
+            pn.layout.Divider(),
             self.create_filter_panel(),
+            pn.layout.Divider(),
             pn.pane.Markdown("### Selected"),
             pn.bind(
                 lambda ids: pn.pane.Markdown(
@@ -269,6 +335,7 @@ class DynamicForagingApp(param.Parameterized):
                 ),
                 df=self.data_holder.param.filtered_df,
             ),
+            sizing_mode="stretch_width",
         )
 
     def main_layout(self) -> pn.template.GoldenTemplate:
