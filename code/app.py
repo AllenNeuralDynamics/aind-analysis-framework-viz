@@ -96,7 +96,6 @@ class DynamicForagingApp(param.Parameterized):
     def _get_display_columns(self) -> list:
         """Columns to show in the main table."""
         return [
-            "_id",
             "subject_id",
             "session_date",
             "agent_alias",
@@ -154,12 +153,12 @@ class DynamicForagingApp(param.Parameterized):
         reset_button.on_click(reset_callback)
 
         examples = """
-**Example queries:**
-- `subject_id == '730945'`
-- `n_trials > 200`
-- `agent_alias.str.contains('QLearning')`
-- `prediction_accuracy > 0.6`
-"""
+            **Example queries:**
+            - `subject_id == '730945'`
+            - `n_trials > 200`
+            - `agent_alias.str.contains('QLearning')`
+            - `prediction_accuracy > 0.6`
+        """
 
         return pn.Column(
             pn.pane.Markdown("### Global Filter"),
@@ -181,9 +180,9 @@ class DynamicForagingApp(param.Parameterized):
 
         table = pn.widgets.Tabulator(
             df[display_cols],
-            selectable="checkbox",
-            disabled=True,
-            frozen_columns=["_id", "subject_id"],
+            selectable=True,  # Enable row selection (multi-select with Ctrl/Shift)
+            disabled=True,  # Disable cell editing
+            frozen_columns=["subject_id", "session_date", "agent_alias"],
             header_filters=True,
             show_index=False,
             height=400,
@@ -236,7 +235,7 @@ class DynamicForagingApp(param.Parameterized):
         return pn.Column(
             count_display,
             pn.pane.Markdown("### Records"),
-            pn.pane.Markdown("*Select one or more rows to view their fitted session figures*"),
+            pn.pane.Markdown("*Click rows to select, or hold Ctrl/Cmd and click for multiple selections*"),
             table,
             pn.layout.Divider(),
             pn.pane.Markdown("### Selected Record Assets"),
