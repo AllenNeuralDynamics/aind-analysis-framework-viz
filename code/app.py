@@ -166,8 +166,7 @@ class DynamicForagingApp(param.Parameterized):
             filter_query,
             pn.Row(filter_button, reset_button),
             status,
-            width=350,
-            css_classes=["card", "p-3", "m-2"],
+            sizing_mode="stretch_width",
         )
 
     def create_data_table(self, df: pd.DataFrame) -> pn.widgets.Tabulator:
@@ -243,9 +242,10 @@ class DynamicForagingApp(param.Parameterized):
             sizing_mode="stretch_width",
         )
 
-    def create_sidebar(self) -> list:
+    def create_sidebar(self) -> pn.Column:
         """Create sidebar content."""
-        return [
+        return pn.Column(
+            self.create_filter_panel(),
             pn.pane.Markdown("### Selected"),
             pn.bind(
                 lambda ids: pn.pane.Markdown(
@@ -269,28 +269,20 @@ class DynamicForagingApp(param.Parameterized):
                 ),
                 df=self.data_holder.param.filtered_df,
             ),
-        ]
-
-    def main_layout(self) -> pn.template.BootstrapTemplate:
-        """Construct the full application layout."""
-        filter_panel = self.create_filter_panel()
-        main_content = self.create_main_content()
-
-        template = pn.template.BootstrapTemplate(
-            title="Dynamic Foraging Model Fitting Explorer",
-            header_background="#0072B5",
-            favicon="https://alleninstitute.org/wp-content/uploads/2021/10/cropped-favicon-32x32.png",
-            main=[
-                pn.Row(
-                    filter_panel,
-                    main_content,
-                    sizing_mode="stretch_width",
-                ),
-            ],
-            sidebar=self.create_sidebar(),
-            theme="default",
         )
-        template.sidebar_width = 200
+
+    def main_layout(self) -> pn.template.GoldenTemplate:
+        """Construct the full application layout."""
+        main_content = self.create_main_content()
+        sidebar_content = self.create_sidebar()
+
+        template = pn.template.GoldenTemplate(
+            title="Dynamic Foraging Model Fitting Explorer",
+        )
+        
+        # Add content to the template
+        template.sidebar.append(sidebar_content)
+        template.main.append(main_content)
 
         return template
 
