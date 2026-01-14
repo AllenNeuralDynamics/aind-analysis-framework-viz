@@ -349,8 +349,8 @@ DYNAMIC_FORAGING_MODEL_FITTING_CONFIG = AppConfig(
 
 # Default configuration for Dynamic Foraging Model Fitting project
 DYNAMIC_FORAGING_MODEL_FITTING_CONFIG = AppConfig(
-    app_title="AIND Analysis Framework Explorer - Model Fitting",
-    doc_title="AIND Analysis Framework Explorer - Model Fitting",
+    app_title="AIND Analysis Framework Explorer - Dynamic Foraging Model Fitting",
+    doc_title="AIND Analysis Framework Explorer - Dynamic Foraging Model Fitting",
     data_loader=DynamicForagingDataLoader(
         include_metrics=True,
         include_latent_variables=False,
@@ -363,8 +363,8 @@ DYNAMIC_FORAGING_MODEL_FITTING_CONFIG = AppConfig(
 # Configuration for Dynamic Foraging NM (Neural Modulation) project
 # Uses GenericDataLoader since there's no specific utility function
 DYNAMIC_FORAGING_NM_CONFIG = AppConfig(
-    app_title="AIND Analysis Framework Explorer - NM",
-    doc_title="AIND Analysis Framework Explorer - NM",
+    app_title="AIND Analysis Framework Explorer - Dynamic Foraging NM",
+    doc_title="AIND Analysis Framework Explorer - Dynamic Foraging NM",
     data_loader=GenericDataLoader(
         collection_name="dynamic-foraging-nm",
     ),
