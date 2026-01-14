@@ -16,17 +16,15 @@ import panel as pn
 import param
 from bokeh.io import curdoc
 
-# Import from aind-analysis-arch-result-access for data loading
-from aind_analysis_arch_result_access import get_mle_model_fitting
-
 from components.asset_viewer import AssetViewer, get_s3_image_url
+from config import DEFAULT_CONFIG, AppConfig
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize Panel extensions
 pn.extension("tabulator")
-curdoc().title = "Dynamic Foraging Model Fitting Explorer"
+curdoc().title = DEFAULT_CONFIG.doc_title
 
 
 class DataHolder(param.Parameterized):
@@ -47,16 +45,23 @@ class DynamicForagingApp(param.Parameterized):
     - Reactive state management
     """
 
-    def __init__(self):
+    def __init__(self, config: AppConfig = DEFAULT_CONFIG):
+        """
+        Initialize the app with configuration.
+
+        Args:
+            config: Application configuration
+        """
         super().__init__()
+        self.config = config
         self.data_holder = DataHolder()
         self.df_full: pd.DataFrame = None
 
         # Asset viewer for displaying S3 figures
         self.asset_viewer = AssetViewer(
-            s3_location_column="S3_location",
-            asset_filename="fitted_session.png",
-            width=900,
+            s3_location_column=config.asset.s3_location_column,
+            asset_filename=config.asset.asset_filename,
+            width=config.asset.viewer_width,
         )
 
         # Load data
@@ -70,26 +75,19 @@ class DynamicForagingApp(param.Parameterized):
         - Old (prototype): session_date at root level
         - New (AIND Analysis Framework): session_date nested in processing.data_processes
         """
-        three_months_ago = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
-        return {
-            "$or": [
-                {"session_date": {"$gte": three_months_ago}},
-                {"processing.data_processes.output_parameters.session_date": {"$gte": three_months_ago}}
-            ]
-        }
+        return self.config.query.get_default_query()
 
     def _load_data(self, custom_query: dict = None) -> str:
         """Load data from the dynamic-foraging-model-fitting collection."""
         query = custom_query if custom_query else self._get_default_query()
         try:
             logger.info(f"Loading data with query: {query}")
-            self.df_full = get_mle_model_fitting(
-                from_custom_query=query,
-                if_include_metrics=True,
-                if_include_latent_variables=False,
-                if_download_figures=False,
-                paginate_settings={"paginate": False},
-            )
+
+            # Use configured data loader
+            if self.config.data_loader is None:
+                raise ValueError("No data loader configured in config.data_loader")
+
+            self.df_full = self.config.data_loader.load(query)
 
             if self.df_full is not None and not self.df_full.empty:
                 logger.info(f"Loaded {len(self.df_full)} records")
@@ -115,17 +113,7 @@ class DynamicForagingApp(param.Parameterized):
 
     def _get_display_columns(self) -> list:
         """Columns to show in the main table."""
-        return [
-            "subject_id",
-            "session_date",
-            "agent_alias",
-            "n_trials",
-            "prediction_accuracy",
-            "log_likelihood",
-            "AIC",
-            "BIC",
-            "pipeline_source",
-        ]
+        return self.config.data_table.display_columns
 
     def apply_global_filter(self, query_string: str) -> str:
         """Apply pandas query filter to the data."""
@@ -151,7 +139,7 @@ class DynamicForagingApp(param.Parameterized):
         filter_query = pn.widgets.TextAreaInput(
             name="Pandas Query",
             value="",
-            placeholder="e.g., subject_id == '730945' or n_trials > 100",
+            placeholder=self.config.filter.default_placeholder,
             height=60,
             sizing_mode="stretch_width",
         )
@@ -172,13 +160,10 @@ class DynamicForagingApp(param.Parameterized):
         filter_button.on_click(apply_callback)
         reset_button.on_click(reset_callback)
 
-        examples = """
-**Example queries:**
-- `subject_id == '730945'`
-- `n_trials > 200`
-- `agent_alias.str.contains('QLearning')`
-- `prediction_accuracy > 0.6`
-"""
+        # Build example queries from config
+        examples = "\n**Example queries:**\n"
+        for ex in self.config.filter.example_queries:
+            examples += f"- `{ex}`\n"
 
         examples_card = pn.Card(
             pn.pane.Markdown(examples),
@@ -205,12 +190,12 @@ class DynamicForagingApp(param.Parameterized):
 
         table = pn.widgets.Tabulator(
             df[display_cols],
-            selectable=True,  # Enable row selection (multi-select with Ctrl/Shift)
-            disabled=True,  # Disable cell editing
-            frozen_columns=["subject_id", "session_date", "agent_alias"],
-            header_filters=True,
-            show_index=False,
-            height=400,
+            selectable=self.config.data_table.selectable,
+            disabled=self.config.data_table.disabled,
+            frozen_columns=self.config.data_table.frozen_columns,
+            header_filters=self.config.data_table.header_filters,
+            show_index=self.config.data_table.show_index,
+            height=self.config.data_table.table_height,
             sizing_mode="stretch_width",
             stylesheets=[":host .tabulator {font-size: 11px;}"],
         )
@@ -221,7 +206,7 @@ class DynamicForagingApp(param.Parameterized):
                 # Get IDs from all selected indices
                 selected_ids = []
                 for idx in event.new:
-                    record_id = str(df.iloc[idx]["_id"])
+                    record_id = str(df.iloc[idx][self.config.id_column])
                     selected_ids.append(record_id)
                 logger.info(f"Selected records: {selected_ids}")
                 self.data_holder.selected_record_ids = selected_ids
@@ -245,7 +230,7 @@ class DynamicForagingApp(param.Parameterized):
         asset_display = self.asset_viewer.create_viewer(
             record_ids_param=self.data_holder.param.selected_record_ids,
             df_param=self.data_holder.param.filtered_df,
-            id_column="_id",
+            id_column=self.config.id_column,
         )
 
         # Record count display
@@ -293,12 +278,10 @@ class DynamicForagingApp(param.Parameterized):
 
         reload_button.on_click(reload_callback)
 
-        examples = """
-**Example queries:**
-- `{"subject_id": "778869"}`
-- `{"session_date": {"$gte": "2024-10-01"}}`
-- `{"n_trials": {"$gt": 200}}`
-"""
+        # Build example queries from config
+        examples = "\n**Example queries:**\n"
+        for ex in self.config.query.get_example_queries():
+            examples += f"- `{ex}`\n"
 
         examples_card = pn.Card(
             pn.pane.Markdown(examples),
@@ -340,7 +323,7 @@ class DynamicForagingApp(param.Parameterized):
             ),
             pn.bind(
                 lambda df: pn.pane.Markdown(
-                    f"**Subjects:** {df['subject_id'].nunique() if df is not None and 'subject_id' in df.columns else 0}",
+                    f"**Subjects:** {df[self.config.subject_id_column].nunique() if df is not None and self.config.subject_id_column in df.columns else 0}",
                     css_classes=["alert", "alert-info", "p-2"],
                 ),
                 df=self.data_holder.param.filtered_df,
@@ -354,7 +337,7 @@ class DynamicForagingApp(param.Parameterized):
         sidebar_content = self.create_sidebar()
 
         template = pn.template.GoldenTemplate(
-            title="Dynamic Foraging Model Fitting Explorer",
+            title=self.config.app_title,
         )
         
         # Add content to the template
