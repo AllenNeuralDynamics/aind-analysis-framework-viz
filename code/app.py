@@ -18,14 +18,14 @@ from bokeh.io import curdoc
 
 from components.asset_viewer import AssetViewer, get_s3_image_url
 from config import (
-    DEFAULT_CONFIG,
+    DYNAMIC_FORAGING_MODEL_FITTING_CONFIG,
     DYNAMIC_FORAGING_NM_CONFIG,
     AppConfig,
 )
 
 # Available project configurations with display names
 PROJECT_OPTIONS = {
-    "Dynamic Foraging Model Fitting": ("dynamic-foraging-model-fitting", DEFAULT_CONFIG),
+    "Dynamic Foraging Model Fitting": ("dynamic-foraging-model-fitting", DYNAMIC_FORAGING_MODEL_FITTING_CONFIG),
     "Dynamic Foraging NM": ("dynamic-foraging-nm", DYNAMIC_FORAGING_NM_CONFIG),
 }
 
@@ -45,7 +45,7 @@ class DataHolder(param.Parameterized):
     load_status = param.String(default="", doc="Status message from data loading")
 
 
-class DynamicForagingApp(param.Parameterized):
+class AINDAnalysisFrameworkApp(param.Parameterized):
     """
     Panel app for exploring AIND analysis results.
 
@@ -463,6 +463,6 @@ curdoc = curdoc()
 curdoc.title = "AIND Analysis Framework Explorer"
 
 # Create and serve the app
-app = DynamicForagingApp()
+app = AINDAnalysisFrameworkApp()
 layout = app.main_layout()
 layout.servable()

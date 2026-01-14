@@ -334,7 +334,7 @@ class AppConfig:
 
 
 # Default configuration for Dynamic Foraging Model Fitting project
-DEFAULT_CONFIG = AppConfig(
+DYNAMIC_FORAGING_MODEL_FITTING_CONFIG = AppConfig(
     data_loader=DynamicForagingDataLoader(
         include_metrics=True,
         include_latent_variables=False,
@@ -349,7 +349,7 @@ DEFAULT_CONFIG = AppConfig(
 # =============================================================================
 
 # Default configuration for Dynamic Foraging Model Fitting project
-DEFAULT_CONFIG = AppConfig(
+DYNAMIC_FORAGING_MODEL_FITTING_CONFIG = AppConfig(
     data_loader=DynamicForagingDataLoader(
         include_metrics=True,
         include_latent_variables=False,
