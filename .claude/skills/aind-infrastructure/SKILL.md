@@ -38,23 +38,22 @@ Each analysis project has its own collection. Examples:
 ### Query Patterns
 
 ```python
-# Basic query with projection
+# Basic query - old format only
 records = client.retrieve_docdb_records(
     filter_query={"status": "success"},
-    projection={"_id": 1, "subject_id": 1, "S3_location": 1},
+    projection={"_id": 1, "subject_id": 1, "s3_location": 1},
     paginate=False,  # Set True for large queries
+)
+
+# Query for new format
+records = client.retrieve_docdb_records(
+    filter_query={"processing.data_processes.output_parameters.additional_info": "success"},
+    projection={"_id": 1, "location": 1},
+    paginate=False,
 )
 ```
 
-### Common Fields
-
-Most collections include:
-- `_id`: Unique record identifier
-- `subject_id`: Animal/subject identifier
-- `session_date`: Date of recording
-- `status`: Processing status ("success", "failed")
-- `S3_location` or `location`: Path to S3 assets
-- `analysis_time` / `analysis_datetime`: When analysis ran
+**Note:** Due to the two different formats, it's recommended to use `aind-analysis-arch-result-access` which handles both formats automatically.
 
 ### Two Pipeline Formats
 
@@ -193,7 +192,13 @@ fs = s3fs.S3FileSystem(anon=True)
 ### Common Bucket Paths
 
 ```python
-S3_PATH_ANALYSIS_ROOT = "s3://aind-dynamic-foraging-analysis-prod-o5171v"
+# Old pipeline bucket
+S3_PATH_ANALYSIS_OLD = "s3://aind-dynamic-foraging-analysis-prod-o5171v"
+
+# New pipeline bucket (AIND Analysis Framework)
+S3_PATH_ANALYSIS_NEW = "s3://aind-analysis-prod-o5171v/dynamic-foraging-model-fitting"
+
+# Bonsai processed data
 S3_PATH_BONSAI_ROOT = "s3://aind-behavior-data/foraging_nwb_bonsai_processed"
 ```
 
@@ -270,9 +275,11 @@ df = get_mle_model_fitting(
     if_download_figures=False,
 )
 
-# For querying all records, use a broad custom query:
-df_all = get_mle_model_fitting(
-    from_custom_query={"status": {"$exists": True}},  # Match all with status field
+# For querying by date range:
+from datetime import datetime, timedelta
+three_months_ago = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+df_recent = get_mle_model_fitting(
+    from_custom_query={"session_date": {"$gte": three_months_ago}},
     if_include_metrics=True,
     if_include_latent_variables=False,
 )
@@ -280,9 +287,9 @@ df_all = get_mle_model_fitting(
 
 **Important notes:**
 - Function requires at least one of: `subject_id`, `session_date`, `agent_alias`, or `from_custom_query`
-- Queries both pipeline formats automatically and merges results
+- The package queries both pipeline formats separately and merges results into a unified DataFrame
 - `only_recent_version=True` (default) deduplicates by keeping most recent analysis
-- Loading all records can be slow; filter by subject_id for prototyping
+- Loading all records can be slow; filter by subject_id or date range for prototyping
 
 Key columns in returned DataFrame:
 - `_id`: Record identifier
