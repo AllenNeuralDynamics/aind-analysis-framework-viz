@@ -1,7 +1,7 @@
 """
-AIND Analysis Framework Visualization App - Prototype
+AIND Analysis Framework Explorer - Prototype
 
-A Panel app for exploring analysis results from the dynamic-foraging-model-fitting collection.
+A Panel app for exploring analysis results from multiple AIND projects.
 
 To run:
     panel serve code/app.py --dev --show
@@ -23,11 +23,10 @@ from config import (
     AppConfig,
 )
 
-# Available project configurations
-PROJECT_CONFIGS = {
-    "default": DEFAULT_CONFIG,
-    "dynamic-foraging-model-fitting": DEFAULT_CONFIG,
-    "dynamic-foraging-nm": DYNAMIC_FORAGING_NM_CONFIG,
+# Available project configurations with display names
+PROJECT_OPTIONS = {
+    "Dynamic Foraging Model Fitting": ("dynamic-foraging-model-fitting", DEFAULT_CONFIG),
+    "Dynamic Foraging NM": ("dynamic-foraging-nm", DYNAMIC_FORAGING_NM_CONFIG),
 }
 
 logging.basicConfig(level=logging.INFO)
@@ -37,124 +36,139 @@ logger = logging.getLogger(__name__)
 pn.extension("tabulator")
 
 
-def get_config(project: str | None = None) -> AppConfig:
-    """
-    Get the configuration for the specified project.
-
-    Args:
-        project: Project name (key from PROJECT_CONFIGS).
-                 If None, uses DEFAULT_CONFIG.
-
-    Returns:
-        AppConfig for the project
-    """
-    if project is None:
-        return DEFAULT_CONFIG
-
-    config = PROJECT_CONFIGS.get(project)
-    if config is None:
-        logger.warning(f"Unknown project '{project}', using DEFAULT_CONFIG")
-        return DEFAULT_CONFIG
-
-    return config
-
-
-# Get project from URL parameter or use default
-curdoc = curdoc()
-curdoc.title = DEFAULT_CONFIG.doc_title
-
-
 class DataHolder(param.Parameterized):
     """Central state container for reactive updates."""
 
     selected_record_ids = param.List(default=[], doc="List of currently selected record IDs")
-    filtered_df = param.DataFrame(doc="Filtered DataFrame")
+    filtered_df = param.DataFrame(default=pd.DataFrame(), doc="Filtered DataFrame")
+    is_loaded = param.Boolean(default=False, doc="Whether data has been loaded")
+    load_status = param.String(default="", doc="Status message from data loading")
 
 
 class DynamicForagingApp(param.Parameterized):
     """
-    Panel app for exploring dynamic foraging model fitting results.
+    Panel app for exploring AIND analysis results.
 
-    This is a minimal prototype demonstrating:
+    This app demonstrates:
+    - Project selection via dropdown
+    - Deferred data loading (load on demand)
     - Data loading from MongoDB via aind-analysis-arch-result-access
     - Tabulator display with filtering
     - Asset viewing from S3
     - Reactive state management
     """
 
-    def __init__(self, config: AppConfig = DEFAULT_CONFIG):
+    # Current project configuration
+    current_config = param.ClassSelector(class_=AppConfig, default=None, doc="Current project config")
+
+    def __init__(self, **params):
         """
-        Initialize the app with configuration.
+        Initialize the app.
 
         Args:
-            config: Application configuration
+            **params: Optional parameters
         """
-        super().__init__()
-        self.config = config
+        super().__init__(**params)
         self.data_holder = DataHolder()
         self.df_full: pd.DataFrame = None
+        self.asset_viewer: AssetViewer = None
 
-        # Asset viewer for displaying S3 figures
-        self.asset_viewer = AssetViewer(
-            s3_location_column=config.asset.s3_location_column,
-            asset_filename=config.asset.asset_filename,
-            width=config.asset.viewer_width,
+        # Project selector widget
+        self.project_selector = pn.widgets.Select(
+            name="Select Project",
+            options=list(PROJECT_OPTIONS.keys()),
+            value="Dynamic Foraging Model Fitting",
+            sizing_mode="stretch_width",
         )
 
-        # Load data
-        logger.info("Loading data from MongoDB...")
-        self._load_data()
+        # Watch for project changes
+        self.project_selector.param.watch(self._on_project_change, "value")
+
+        # Initialize with default project config (but don't load data yet)
+        self.current_config = PROJECT_OPTIONS[self.project_selector.value][1]
+        self._init_asset_viewer()
+
+    def _init_asset_viewer(self):
+        """Initialize or reinitialize the asset viewer based on current config."""
+        if self.current_config:
+            self.asset_viewer = AssetViewer(
+                s3_location_column=self.current_config.asset.s3_location_column,
+                asset_filename=self.current_config.asset.asset_filename,
+                width=self.current_config.asset.viewer_width,
+            )
+
+    def _on_project_change(self, event):
+        """Handle project selection change."""
+        project_name = event.new
+        if project_name in PROJECT_OPTIONS:
+            _, config = PROJECT_OPTIONS[project_name]
+            self.current_config = config
+            self._init_asset_viewer()
+
+            # Reset data state when project changes
+            self.data_holder.filtered_df = pd.DataFrame()
+            self.data_holder.selected_record_ids = []
+            self.data_holder.is_loaded = False
+            self.data_holder.load_status = ""
+            self.df_full = None
+
+            logger.info(f"Project changed to: {project_name}")
 
     def _get_default_query(self) -> dict:
-        """Get default DocDB query for recent 3 months of data.
+        """Get default DocDB query for recent data."""
+        return self.current_config.query.get_default_query()
 
-        Queries both pipeline formats:
-        - Old (prototype): session_date at root level
-        - New (AIND Analysis Framework): session_date nested in processing.data_processes
-        """
-        return self.config.query.get_default_query()
+    def load_data(self, custom_query: dict = None) -> str:
+        """Load data from the selected project collection."""
+        if not self.current_config or not self.current_config.data_loader:
+            return "Error: No data loader configured"
 
-    def _load_data(self, custom_query: dict = None) -> str:
-        """Load data from the dynamic-foraging-model-fitting collection."""
         query = custom_query if custom_query else self._get_default_query()
+
         try:
             logger.info(f"Loading data with query: {query}")
+            self.data_holder.load_status = "Loading..."
 
-            # Use configured data loader
-            if self.config.data_loader is None:
-                raise ValueError("No data loader configured in config.data_loader")
-
-            self.df_full = self.config.data_loader.load(query)
+            self.df_full = self.current_config.data_loader.load(query)
 
             if self.df_full is not None and not self.df_full.empty:
                 logger.info(f"Loaded {len(self.df_full)} records")
 
                 # Add asset URL column for hover tooltips
-                self.df_full["asset_url"] = self.df_full["S3_location"].apply(
-                    lambda s3: get_s3_image_url(f"{s3}/fitted_session.png") if s3 else None
-                )
+                s3_col = self.current_config.asset.s3_location_column
+                asset_file = self.current_config.asset.asset_filename
+                if s3_col in self.df_full.columns:
+                    self.df_full["asset_url"] = self.df_full[s3_col].apply(
+                        lambda s3: get_s3_image_url(f"{s3}/{asset_file}") if s3 else None
+                    )
 
                 self.data_holder.filtered_df = self.df_full.copy()
+                self.data_holder.is_loaded = True
+                self.data_holder.load_status = f"Loaded {len(self.df_full)} records"
                 return f"Loaded {len(self.df_full)} records"
             else:
                 logger.warning("No data returned from query")
                 self.df_full = pd.DataFrame()
                 self.data_holder.filtered_df = pd.DataFrame()
+                self.data_holder.is_loaded = False
+                self.data_holder.load_status = "No data returned from query"
                 return "No data returned from query"
 
         except Exception as e:
             logger.error(f"Failed to load data: {e}")
             self.df_full = pd.DataFrame()
             self.data_holder.filtered_df = pd.DataFrame()
+            self.data_holder.is_loaded = False
+            self.data_holder.load_status = f"Error: {e}"
             return f"Error: {e}"
 
     def _get_display_columns(self) -> list:
         """Columns to show in the main table."""
-        return self.config.data_table.display_columns
+        return self.current_config.data_table.display_columns if self.current_config else []
 
     def apply_global_filter(self, query_string: str) -> str:
         """Apply pandas query filter to the data."""
-        if self.df_full is None or self.df_full.empty:
+        if not self.data_holder.is_loaded or self.df_full is None or self.df_full.empty:
             return "No data loaded"
 
         if not query_string.strip():
@@ -171,12 +185,37 @@ class DynamicForagingApp(param.Parameterized):
         except Exception as e:
             return f"Query error: {e}"
 
+    def create_project_selector(self) -> pn.Column:
+        """Create the project selector panel."""
+        load_button = pn.widgets.Button(
+            name="Load Data",
+            button_type="primary",
+            sizing_mode="stretch_width",
+        )
+        status = pn.pane.Markdown("", css_classes=["alert", "alert-info", "p-2"])
+
+        def load_callback(_event):
+            result = self.load_data()
+            status.object = result
+
+        load_button.on_click(load_callback)
+
+        return pn.Column(
+            pn.pane.Markdown("### Project Selection"),
+            self.project_selector,
+            pn.pane.Markdown("*Select a project and click Load Data to begin*"),
+            pn.layout.Spacer(height=10),
+            load_button,
+            status,
+            sizing_mode="stretch_width",
+        )
+
     def create_filter_panel(self) -> pn.Column:
         """Create the global filter panel."""
         filter_query = pn.widgets.TextAreaInput(
             name="Pandas Query",
             value="",
-            placeholder=self.config.filter.default_placeholder,
+            placeholder=self.current_config.filter.default_placeholder if self.current_config else "",
             height=60,
             sizing_mode="stretch_width",
         )
@@ -199,7 +238,7 @@ class DynamicForagingApp(param.Parameterized):
 
         # Build example queries from config
         examples = "\n**Example queries:**\n"
-        for ex in self.config.filter.example_queries:
+        for ex in self.current_config.filter.example_queries:
             examples += f"- `{ex}`\n"
 
         examples_card = pn.Card(
@@ -227,12 +266,12 @@ class DynamicForagingApp(param.Parameterized):
 
         table = pn.widgets.Tabulator(
             df[display_cols],
-            selectable=self.config.data_table.selectable,
-            disabled=self.config.data_table.disabled,
-            frozen_columns=self.config.data_table.frozen_columns,
-            header_filters=self.config.data_table.header_filters,
-            show_index=self.config.data_table.show_index,
-            height=self.config.data_table.table_height,
+            selectable=self.current_config.data_table.selectable,
+            disabled=self.current_config.data_table.disabled,
+            frozen_columns=self.current_config.data_table.frozen_columns,
+            header_filters=self.current_config.data_table.header_filters,
+            show_index=self.current_config.data_table.show_index,
+            height=self.current_config.data_table.table_height,
             sizing_mode="stretch_width",
             stylesheets=[":host .tabulator {font-size: 11px;}"],
         )
@@ -243,7 +282,7 @@ class DynamicForagingApp(param.Parameterized):
                 # Get IDs from all selected indices
                 selected_ids = []
                 for idx in event.new:
-                    record_id = str(df.iloc[idx][self.config.id_column])
+                    record_id = str(df.iloc[idx][self.current_config.id_column])
                     selected_ids.append(record_id)
                 logger.info(f"Selected records: {selected_ids}")
                 self.data_holder.selected_record_ids = selected_ids
@@ -255,40 +294,72 @@ class DynamicForagingApp(param.Parameterized):
 
         return table
 
-    def create_main_content(self) -> pn.Column:
-        """Create the main content area."""
-        # Reactive table that updates when filtered_df changes
-        table = pn.bind(
-            self.create_data_table,
-            df=self.data_holder.param.filtered_df,
-        )
-
-        # Reactive asset viewer
-        asset_display = self.asset_viewer.create_viewer(
-            record_ids_param=self.data_holder.param.selected_record_ids,
-            df_param=self.data_holder.param.filtered_df,
-            id_column=self.config.id_column,
-        )
-
-        # Record count display
-        count_display = pn.bind(
-            lambda df: pn.pane.Markdown(
-                f"**Showing {len(df) if df is not None else 0} records**",
-                css_classes=["alert", "alert-success", "p-2"],
-            ),
-            df=self.data_holder.param.filtered_df,
-        )
+    def create_welcome_content(self) -> pn.Column:
+        """Create the welcome/placeholder content shown before data is loaded."""
+        welcome_html = """
+        <div style="text-align: center; padding: 50px 20px;">
+            <h2>Welcome to AIND Analysis Framework Explorer</h2>
+            <p style="font-size: 1.1em; color: #666;">
+                Select a project from the sidebar and click <strong>Load Data</strong> to begin exploring.
+            </p>
+            <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+                <h3 style="margin-top: 0;">Available Projects:</h3>
+                <ul style="text-align: left; max-width: 500px; margin: 0 auto;">
+                    <li><strong>Dynamic Foraging Model Fitting</strong> - MLE model fitting results for behavioral data</li>
+                    <li><strong>Dynamic Foraging NM</strong> - Neural modulation analysis results</li>
+                    <li><em style="color: #888;">More projects coming soon...</em></li>
+                </ul>
+            </div>
+            <p style="margin-top: 20px; color: #888; font-size: 0.9em;">
+                This explorer supports multiple AIND analysis collections. Select a project to view its data.
+            </p>
+        </div>
+        """
 
         return pn.Column(
-            count_display,
-            pn.pane.Markdown("### Records"),
-            pn.pane.Markdown("*Click rows to select, or hold Ctrl/Cmd and click for multiple selections*"),
-            table,
-            pn.layout.Divider(),
-            pn.pane.Markdown("### Selected Record Assets"),
-            asset_display,
+            pn.pane.HTML(welcome_html, sizing_mode="stretch_width"),
             sizing_mode="stretch_width",
         )
+
+    def create_main_content(self) -> pn.Column:
+        """Create the main content area."""
+        def render_content(is_loaded):
+            """Render content based on whether data is loaded."""
+            if not is_loaded:
+                return self.create_welcome_content()
+
+            # Data is loaded - show table and assets
+            table = pn.bind(
+                self.create_data_table,
+                df=self.data_holder.param.filtered_df,
+            )
+
+            asset_display = self.asset_viewer.create_viewer(
+                record_ids_param=self.data_holder.param.selected_record_ids,
+                df_param=self.data_holder.param.filtered_df,
+                id_column=self.current_config.id_column,
+            )
+
+            count_display = pn.bind(
+                lambda df: pn.pane.Markdown(
+                    f"**Showing {len(df) if df is not None else 0} records**",
+                    css_classes=["alert", "alert-success", "p-2"],
+                ),
+                df=self.data_holder.param.filtered_df,
+            )
+
+            return pn.Column(
+                count_display,
+                pn.pane.Markdown("### Records"),
+                pn.pane.Markdown("*Click rows to select, or hold Ctrl/Cmd and click for multiple selections*"),
+                table,
+                pn.layout.Divider(),
+                pn.pane.Markdown("### Selected Record Assets"),
+                asset_display,
+                sizing_mode="stretch_width",
+            )
+
+        return pn.bind(render_content, is_loaded=self.data_holder.param.is_loaded)
 
     def create_docdb_query_panel(self) -> pn.Column:
         """Create the DocDB query panel for data loading."""
@@ -308,7 +379,7 @@ class DynamicForagingApp(param.Parameterized):
         def reload_callback(_event):
             try:
                 query = json.loads(docdb_query.value)
-                result = self._load_data(custom_query=query)
+                result = self.load_data(custom_query=query)
                 status.object = result
             except json.JSONDecodeError as e:
                 status.object = f"Invalid JSON: {e}"
@@ -317,7 +388,7 @@ class DynamicForagingApp(param.Parameterized):
 
         # Build example queries from config
         examples = "\n**Example queries:**\n"
-        for ex in self.config.query.get_example_queries():
+        for ex in self.current_config.query.get_example_queries():
             examples += f"- `{ex}`\n"
 
         examples_card = pn.Card(
@@ -338,6 +409,8 @@ class DynamicForagingApp(param.Parameterized):
     def create_sidebar(self) -> pn.Column:
         """Create sidebar content."""
         return pn.Column(
+            self.create_project_selector(),
+            pn.layout.Divider(),
             self.create_docdb_query_panel(),
             pn.layout.Divider(),
             self.create_filter_panel(),
@@ -360,7 +433,7 @@ class DynamicForagingApp(param.Parameterized):
             ),
             pn.bind(
                 lambda df: pn.pane.Markdown(
-                    f"**Subjects:** {df[self.config.subject_id_column].nunique() if df is not None and self.config.subject_id_column in df.columns else 0}",
+                    f"**Subjects:** {df[self.current_config.subject_id_column].nunique() if df is not None and self.current_config and self.current_config.subject_id_column in df.columns else 0}",
                     css_classes=["alert", "alert-info", "p-2"],
                 ),
                 df=self.data_holder.param.filtered_df,
@@ -373,10 +446,8 @@ class DynamicForagingApp(param.Parameterized):
         main_content = self.create_main_content()
         sidebar_content = self.create_sidebar()
 
-        template = pn.template.GoldenTemplate(
-            title=self.config.app_title,
-        )
-        
+        template = pn.template.GoldenTemplate(title=self.current_config.app_title)
+
         # Add content to the template
         template.sidebar.append(sidebar_content)
         template.main.append(main_content)
@@ -385,23 +456,13 @@ class DynamicForagingApp(param.Parameterized):
 
 
 # =============================================================================
-# Project Selection via URL Parameter
+# App Initialization
 # =============================================================================
 
-# Get project from URL query parameter (e.g., ?project=dynamic-foraging-nm)
-# If not specified, uses the default project
-if pn.state.location is not None:
-    _project_param = pn.state.location.query_params.get("project", "default")
-else:
-    # Fallback when not running in server context (e.g., testing)
-    _project_param = "default"
+curdoc = curdoc()
+curdoc.title = "AIND Analysis Framework Explorer"
 
-_config = get_config(_project_param)
-
-# Update doc title based on selected project
-curdoc.title = _config.doc_title
-
-# Create and serve the app with the selected config
-app = DynamicForagingApp(config=_config)
+# Create and serve the app
+app = DynamicForagingApp()
 layout = app.main_layout()
 layout.servable()
