@@ -187,25 +187,46 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
 
     def create_project_selector(self) -> pn.Column:
         """Create the project selector panel."""
+        return pn.Column(
+            pn.pane.Markdown("### Project Selection"),
+            self.project_selector,
+            pn.pane.Markdown("*Select a project, optionally edit the DocDB query below, then click Load Data*"),
+            sizing_mode="stretch_width",
+        )
+
+    def create_load_data_panel(self) -> pn.Column:
+        """Create the Load Data button with status and loading indicator."""
         load_button = pn.widgets.Button(
-            name="Load Data",
+            name="Load Data from DocDB",
             button_type="primary",
             sizing_mode="stretch_width",
         )
         status = pn.pane.Markdown("", css_classes=["alert", "alert-info", "p-2"])
 
+        # Loading indicator (hidden by default)
+        loading_spinner = pn.indicators.LoadingSpinner(
+            value=False,
+            width=30,
+            height=30,
+            sizing_mode="fixed",
+        )
+
         def load_callback(_event):
+            # Show loading spinner and update status
+            loading_spinner.value = True
+            status.object = "**Loading data...**"
+
+            # Load the data
             result = self.load_data()
+
+            # Hide spinner and show result
+            loading_spinner.value = False
             status.object = result
 
         load_button.on_click(load_callback)
 
         return pn.Column(
-            pn.pane.Markdown("### Project Selection"),
-            self.project_selector,
-            pn.pane.Markdown("*Select a project and click Load Data to begin*"),
-            pn.layout.Spacer(height=10),
-            load_button,
+            pn.Row(load_button, loading_spinner),
             status,
             sizing_mode="stretch_width",
         )
@@ -376,13 +397,28 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
         reload_button = pn.widgets.Button(name="Reload Data", button_type="primary", width=120)
         status = pn.pane.Markdown("", css_classes=["alert", "alert-info", "p-2"])
 
+        # Loading indicator (hidden by default)
+        loading_spinner = pn.indicators.LoadingSpinner(
+            value=False,
+            width=30,
+            height=30,
+            sizing_mode="fixed",
+        )
+
         def reload_callback(_event):
+            # Show loading spinner and update status
+            loading_spinner.value = True
+            status.object = "**Loading data...**"
+
             try:
                 query = json.loads(docdb_query.value)
                 result = self.load_data(custom_query=query)
                 status.object = result
             except json.JSONDecodeError as e:
                 status.object = f"Invalid JSON: {e}"
+            finally:
+                # Hide spinner
+                loading_spinner.value = False
 
         reload_button.on_click(reload_callback)
 
@@ -397,21 +433,26 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
             collapsed=True,
         )
 
-        return pn.Column(
-            pn.pane.Markdown("### DocDB Query"),
+        # Wrap the entire panel in a Card, collapsed by default
+        query_panel = pn.Card(
             docdb_query,
-            reload_button,
+            pn.Row(reload_button, loading_spinner),
             status,
             examples_card,
+            title="DocDB Query",
+            collapsed=True,
             sizing_mode="stretch_width",
+            stylesheets=[""":host { margin: 0 10px 10px 10px; }"""],
         )
+
+        return query_panel
 
     def create_sidebar(self) -> pn.Column:
         """Create sidebar content."""
         return pn.Column(
             self.create_project_selector(),
-            pn.layout.Divider(),
             self.create_docdb_query_panel(),
+            self.create_load_data_panel(),
             pn.layout.Divider(),
             self.create_filter_panel(),
             pn.layout.Divider(),

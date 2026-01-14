@@ -8,7 +8,7 @@ param>=2.0.0
 # Data access
 s3fs>=2024.1.0
 aind-data-access-api>=0.1.0
-aind-analysis-arch-result-access>=0.1.0
+aind-analysis-arch-result-access>=1.0.0
 
 # Visualization
 matplotlib>=3.7.0
