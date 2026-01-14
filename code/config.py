@@ -258,6 +258,8 @@ class QueryConfig:
 
     # Default query returns recent data
     default_days_back: int = 90
+    # Optional override for default query (if None, uses get_default_query())
+    default_query: dict | None = None
 
     def get_default_query(self) -> dict:
         """
@@ -266,6 +268,10 @@ class QueryConfig:
         Returns:
             MongoDB query as dict
         """
+        # If default_query is explicitly set, use it
+        if self.default_query is not None:
+            return self.default_query
+
         cutoff_date = (datetime.now() - timedelta(days=self.default_days_back)).strftime("%Y-%m-%d")
 
         # Support both pipeline formats:
@@ -362,6 +368,8 @@ DYNAMIC_FORAGING_MODEL_FITTING_CONFIG = AppConfig(
 
 # Configuration for Dynamic Foraging NM (Neural Modulation) project
 # Uses GenericDataLoader since there's no specific utility function
+# Note: This collection has a different structure - output_parameters is empty
+# Data is in processing.data_processes.code.parameters (plot_types, channels, fitted_model, etc.)
 DYNAMIC_FORAGING_NM_CONFIG = AppConfig(
     app_title="AIND Analysis Framework Explorer - Dynamic Foraging NM",
     doc_title="AIND Analysis Framework Explorer - Dynamic Foraging NM",
@@ -376,14 +384,22 @@ DYNAMIC_FORAGING_NM_CONFIG = AppConfig(
     data_table=DataTableConfig(
         display_columns=[
             "_id",
-            "subject_id",
-            "session_date",
+            "processing.data_processes.code.parameters.plot_types",
+            "processing.data_processes.code.parameters.channels",
+            "processing.data_processes.code.parameters.fitted_model",
+            "processing.data_processes.end_date_time",
         ],
-        frozen_columns=["subject_id", "session_date"],
+        frozen_columns=["_id"],
+    ),
+    query=QueryConfig(
+        default_query={},  # Empty query since this collection doesn't have session_date
+        default_days_back=90,
     ),
     id_column="_id",
-    session_date_column="output_parameters.session_date",
-    subject_id_column="output_parameters.subject_id",
+    # Note: session_date and subject_id are not available as separate fields in this collection
+    # They would need to be parsed from file_location parameters if needed
+    session_date_column="processing.data_processes.end_date_time",
+    subject_id_column=None,  # Not available in this collection structure
 )
 
 

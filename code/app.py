@@ -433,7 +433,7 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
             ),
             pn.bind(
                 lambda df: pn.pane.Markdown(
-                    f"**Subjects:** {df[self.current_config.subject_id_column].nunique() if df is not None and self.current_config and self.current_config.subject_id_column in df.columns else 0}",
+                    f"**Subjects:** {df[self.current_config.subject_id_column].nunique() if df is not None and self.current_config and self.current_config.subject_id_column and self.current_config.subject_id_column in df.columns else 'N/A'}",
                     css_classes=["alert", "alert-info", "p-2"],
                 ),
                 df=self.data_holder.param.filtered_df,

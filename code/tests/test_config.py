@@ -234,7 +234,7 @@ class TestCustomDataLoader:
 
         # Verify it can be used with AppConfig
         config = AppConfig(
-            app_name="Mock Project",
+            app_title="Mock Project",
             data_loader=loader,
         )
         assert isinstance(config.data_loader, DataLoader)
@@ -245,17 +245,17 @@ class TestAppConfig:
     """Test the AppConfig class."""
 
     def test_default_config_has_dataloader(self):
-        """Test that DEFAULT_CONFIG has a data loader."""
-        from config import DEFAULT_CONFIG, DataLoader
+        """Test that DYNAMIC_FORAGING_MODEL_FITTING_CONFIG has a data loader."""
+        from config import DYNAMIC_FORAGING_MODEL_FITTING_CONFIG, DataLoader
 
-        assert DEFAULT_CONFIG.data_loader is not None
-        assert isinstance(DEFAULT_CONFIG.data_loader, DataLoader)
+        assert DYNAMIC_FORAGING_MODEL_FITTING_CONFIG.data_loader is not None
+        assert isinstance(DYNAMIC_FORAGING_MODEL_FITTING_CONFIG.data_loader, DataLoader)
 
     def test_default_config_uses_dynamic_foraging_loader(self):
-        """Test that DEFAULT_CONFIG uses DynamicForagingDataLoader."""
-        from config import DEFAULT_CONFIG, DynamicForagingDataLoader
+        """Test that DYNAMIC_FORAGING_MODEL_FITTING_CONFIG uses DynamicForagingDataLoader."""
+        from config import DYNAMIC_FORAGING_MODEL_FITTING_CONFIG, DynamicForagingDataLoader
 
-        assert isinstance(DEFAULT_CONFIG.data_loader, DynamicForagingDataLoader)
+        assert isinstance(DYNAMIC_FORAGING_MODEL_FITTING_CONFIG.data_loader, DynamicForagingDataLoader)
 
     def test_config_with_custom_loader(self):
         """Test creating AppConfig with a custom loader."""
@@ -266,19 +266,19 @@ class TestAppConfig:
                 return pd.DataFrame({"test": [1]})
 
         config = AppConfig(
-            app_name="Test App",
+            app_title="Test App",
             data_loader=CustomLoader(),
         )
 
-        assert config.app_name == "Test App"
+        assert config.app_title == "Test App"
         assert isinstance(config.data_loader, CustomLoader)
 
     def test_config_loads_data_through_loader(self):
         """Test that config can load data through its data_loader."""
-        from config import DEFAULT_CONFIG
+        from config import DYNAMIC_FORAGING_MODEL_FITTING_CONFIG
 
         # This should work without errors
-        query = DEFAULT_CONFIG.query.get_default_query()
+        query = DYNAMIC_FORAGING_MODEL_FITTING_CONFIG.query.get_default_query()
         # Note: This will make actual API calls in real environment
         # In tests, you might want to mock this
         assert isinstance(query, dict)
@@ -288,12 +288,39 @@ class TestAppConfig:
         """Test that DYNAMIC_FORAGING_NM_CONFIG exists and is configured correctly."""
         from config import DYNAMIC_FORAGING_NM_CONFIG, GenericDataLoader
 
-        assert DYNAMIC_FORAGING_NM_CONFIG.app_name == "Dynamic Foraging NM Explorer"
+        assert DYNAMIC_FORAGING_NM_CONFIG.app_title == "AIND Analysis Framework Explorer - Dynamic Foraging NM"
         assert isinstance(DYNAMIC_FORAGING_NM_CONFIG.data_loader, GenericDataLoader)
         assert DYNAMIC_FORAGING_NM_CONFIG.data_loader.collection_name == "dynamic-foraging-nm"
         assert DYNAMIC_FORAGING_NM_CONFIG.asset.s3_location_column == "location"
-        assert DYNAMIC_FORAGING_NM_CONFIG.subject_id_column == "output_parameters.subject_id"
-        assert DYNAMIC_FORAGING_NM_CONFIG.session_date_column == "output_parameters.session_date"
+        # NM config doesn't have subject_id_column (set to None)
+        assert DYNAMIC_FORAGING_NM_CONFIG.subject_id_column is None
+        assert DYNAMIC_FORAGING_NM_CONFIG.session_date_column == "processing.data_processes.end_date_time"
+        # NM config uses empty query as default
+        assert DYNAMIC_FORAGING_NM_CONFIG.query.get_default_query() == {}
+
+    def test_query_config_default_query_override(self):
+        """Test that QueryConfig can override default query."""
+        from config import QueryConfig, AppConfig, DataLoader
+
+        class MockLoader(DataLoader):
+            def load(self, query: dict) -> pd.DataFrame:
+                return pd.DataFrame()
+
+        # Test with default_query override
+        config = AppConfig(
+            app_title="Test",
+            data_loader=MockLoader(),
+            query=QueryConfig(default_query={"custom": "query"}),
+        )
+        assert config.query.get_default_query() == {"custom": "query"}
+
+        # Test without default_query override (uses default behavior)
+        config2 = AppConfig(
+            app_title="Test2",
+            data_loader=MockLoader(),
+        )
+        query = config2.query.get_default_query()
+        assert "$or" in query  # Should have the default date-based query
 
 
 def run_tests():
@@ -310,6 +337,7 @@ def run_tests():
     TestAppConfig().test_config_with_custom_loader()
     TestAppConfig().test_config_loads_data_through_loader()
     TestAppConfig().test_dynamic_foraging_nm_config_exists()
+    TestAppConfig().test_query_config_default_query_override()
     print("\nAll tests passed!")
 
 
