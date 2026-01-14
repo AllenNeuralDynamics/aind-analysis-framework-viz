@@ -122,6 +122,86 @@ class TestDynamicForagingDataLoader:
         )
 
 
+class TestGenericDataLoader:
+    """Test the GenericDataLoader implementation."""
+
+    def test_init_with_defaults(self):
+        """Test initialization with default parameters."""
+        from config import GenericDataLoader
+
+        loader = GenericDataLoader(collection_name="test-collection")
+
+        assert loader.collection_name == "test-collection"
+        assert loader.host == "api.allenneuraldynamics.org"
+        assert loader.database == "analysis"
+        assert loader.flatten_separator == "."
+        assert loader.max_level is None
+
+    def test_init_with_custom_params(self):
+        """Test initialization with custom parameters."""
+        from config import GenericDataLoader
+
+        loader = GenericDataLoader(
+            collection_name="my-collection",
+            host="custom.host.com",
+            database="my_database",
+            flatten_separator="_",
+            max_level=2,
+        )
+
+        assert loader.collection_name == "my-collection"
+        assert loader.host == "custom.host.com"
+        assert loader.database == "my_database"
+        assert loader.flatten_separator == "_"
+        assert loader.max_level == 2
+
+    @patch('aind_data_access_api.document_db.MetadataDbClient')
+    def test_load_with_mock_client(self, mock_client_class):
+        """Test load() with mocked DocDB client."""
+        from config import GenericDataLoader
+
+        # Setup mock - typical DocDB structure with nested fields
+        mock_client = mock_client_class.return_value
+        mock_records = [
+            {
+                "_id": "123",
+                "location": "s3://bucket/path/",
+                "processing": {
+                    "data_processes": [
+                        {
+                            "code": {"input_date": {"url": "s3://input-url"}},
+                            "output_parameters": {
+                                "subject_id": "730945",
+                                "session_date": "2024-01-01",
+                                "alpha": 0.5,
+                            },
+                        }
+                    ]
+                },
+            }
+        ]
+        mock_client.retrieve_docdb_records.return_value = mock_records
+
+        # Create loader and load
+        loader = GenericDataLoader(collection_name="test-collection")
+        df = loader.load({})
+
+        # Verify client was created correctly
+        mock_client_class.assert_called_once_with(
+            host="api.allenneuraldynamics.org",
+            database="analysis",
+            collection="test-collection",
+        )
+
+        # Verify retrieve_docdb_records was called
+        mock_client.retrieve_docdb_records.assert_called_once()
+
+        # Check DataFrame columns - json_normalize handles all flattening
+        assert "processing.data_processes.code.input_date.url" in df.columns
+        assert "processing.data_processes.output_parameters.subject_id" in df.columns
+        assert df["processing.data_processes.output_parameters.alpha"].iloc[0] == 0.5
+
+
 class TestCustomDataLoader:
     """Test creating custom data loaders for other projects."""
 
@@ -204,6 +284,17 @@ class TestAppConfig:
         assert isinstance(query, dict)
         assert "$or" in query
 
+    def test_dynamic_foraging_nm_config_exists(self):
+        """Test that DYNAMIC_FORAGING_NM_CONFIG exists and is configured correctly."""
+        from config import DYNAMIC_FORAGING_NM_CONFIG, GenericDataLoader
+
+        assert DYNAMIC_FORAGING_NM_CONFIG.app_name == "Dynamic Foraging NM Explorer"
+        assert isinstance(DYNAMIC_FORAGING_NM_CONFIG.data_loader, GenericDataLoader)
+        assert DYNAMIC_FORAGING_NM_CONFIG.data_loader.collection_name == "dynamic-foraging-nm"
+        assert DYNAMIC_FORAGING_NM_CONFIG.asset.s3_location_column == "location"
+        assert DYNAMIC_FORAGING_NM_CONFIG.subject_id_column == "output_parameters.subject_id"
+        assert DYNAMIC_FORAGING_NM_CONFIG.session_date_column == "output_parameters.session_date"
+
 
 def run_tests():
     """Run tests without pytest."""
@@ -211,11 +302,14 @@ def run_tests():
     TestDataLoader().test_dataloader_is_abstract()
     TestDynamicForagingDataLoader().test_init_with_defaults()
     TestDynamicForagingDataLoader().test_init_with_custom_params()
+    TestGenericDataLoader().test_init_with_defaults()
+    TestGenericDataLoader().test_init_with_custom_params()
     TestCustomDataLoader().test_custom_dataloader_implementation()
     TestAppConfig().test_default_config_has_dataloader()
     TestAppConfig().test_default_config_uses_dynamic_foraging_loader()
     TestAppConfig().test_config_with_custom_loader()
     TestAppConfig().test_config_loads_data_through_loader()
+    TestAppConfig().test_dynamic_foraging_nm_config_exists()
     print("\nAll tests passed!")
 
 

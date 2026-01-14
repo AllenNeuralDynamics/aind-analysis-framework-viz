@@ -17,14 +17,51 @@ import param
 from bokeh.io import curdoc
 
 from components.asset_viewer import AssetViewer, get_s3_image_url
-from config import DEFAULT_CONFIG, AppConfig
+from config import (
+    DEFAULT_CONFIG,
+    DYNAMIC_FORAGING_NM_CONFIG,
+    AppConfig,
+)
+
+# Available project configurations
+PROJECT_CONFIGS = {
+    "default": DEFAULT_CONFIG,
+    "dynamic-foraging-model-fitting": DEFAULT_CONFIG,
+    "dynamic-foraging-nm": DYNAMIC_FORAGING_NM_CONFIG,
+}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize Panel extensions
 pn.extension("tabulator")
-curdoc().title = DEFAULT_CONFIG.doc_title
+
+
+def get_config(project: str | None = None) -> AppConfig:
+    """
+    Get the configuration for the specified project.
+
+    Args:
+        project: Project name (key from PROJECT_CONFIGS).
+                 If None, uses DEFAULT_CONFIG.
+
+    Returns:
+        AppConfig for the project
+    """
+    if project is None:
+        return DEFAULT_CONFIG
+
+    config = PROJECT_CONFIGS.get(project)
+    if config is None:
+        logger.warning(f"Unknown project '{project}', using DEFAULT_CONFIG")
+        return DEFAULT_CONFIG
+
+    return config
+
+
+# Get project from URL parameter or use default
+curdoc = curdoc()
+curdoc.title = DEFAULT_CONFIG.doc_title
 
 
 class DataHolder(param.Parameterized):
@@ -347,7 +384,24 @@ class DynamicForagingApp(param.Parameterized):
         return template
 
 
-# Create and serve the app
-app = DynamicForagingApp()
+# =============================================================================
+# Project Selection via URL Parameter
+# =============================================================================
+
+# Get project from URL query parameter (e.g., ?project=dynamic-foraging-nm)
+# If not specified, uses the default project
+if pn.state.location is not None:
+    _project_param = pn.state.location.query_params.get("project", "default")
+else:
+    # Fallback when not running in server context (e.g., testing)
+    _project_param = "default"
+
+_config = get_config(_project_param)
+
+# Update doc title based on selected project
+curdoc.title = _config.doc_title
+
+# Create and serve the app with the selected config
+app = DynamicForagingApp(config=_config)
 layout = app.main_layout()
 layout.servable()

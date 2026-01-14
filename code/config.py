@@ -13,6 +13,28 @@ from typing import Optional
 import pandas as pd
 
 
+def flatten_dict(d: dict, parent_key: str = "", sep: str = ".") -> dict:
+    """
+    Flatten a nested dictionary.
+
+    Args:
+        d: Dictionary to flatten
+        parent_key: Parent key for nested recursion
+        sep: Separator between keys
+
+    Returns:
+        Flattened dictionary
+    """
+    items = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+
+
 class DataLoader(ABC):
     """
     Abstract base class for data loaders.
@@ -74,6 +96,97 @@ class DynamicForagingDataLoader(DataLoader):
             if_download_figures=self.download_figures,
             paginate_settings=self.paginate_settings,
         )
+
+
+class GenericDataLoader(DataLoader):
+    """
+    Generic data loader for projects without existing utility functions.
+
+    Queries DocDB directly and flattens nested fields from processing.data_processes.
+    Uses pd.json_normalize for simple, efficient flattening.
+    """
+
+    def __init__(
+        self,
+        collection_name: str,
+        host: str = "api.allenneuraldynamics.org",
+        database: str = "analysis",
+        flatten_separator: str = ".",
+        max_level: int | None = None,
+        paginate_settings: dict | None = None,
+    ):
+        """
+        Initialize the generic data loader.
+
+        Args:
+            collection_name: Name of the DocDB collection
+            host: DocDB host
+            database: Database name
+            flatten_separator: Separator for flattened keys (default: ".")
+            max_level: Max depth to flatten (None = flatten all levels)
+            paginate_settings: Pagination settings
+        """
+        self.collection_name = collection_name
+        self.host = host
+        self.database = database
+        self.flatten_separator = flatten_separator
+        self.max_level = max_level
+        self.paginate_settings = paginate_settings or {"paginate": False}
+
+        # Lazy initialization of client
+        self._client = None
+
+    def _get_client(self):
+        """Get or create the DocDB client."""
+        if self._client is None:
+            from aind_data_access_api.document_db import MetadataDbClient
+
+            self._client = MetadataDbClient(
+                host=self.host,
+                database=self.database,
+                collection=self.collection_name,
+            )
+        return self._client
+
+    def load(self, query: dict) -> pd.DataFrame:
+        """Load data from DocDB and flatten using json_normalize."""
+        client = self._get_client()
+
+        # Query DocDB - get all fields, no projection
+        records = client.retrieve_docdb_records(
+            filter_query=query,
+            projection=None,
+            **self.paginate_settings,
+        )
+
+        if not records:
+            return pd.DataFrame()
+
+        # Preprocess: extract single-element lists so json_normalize can flatten them
+        # This handles common DocDB pattern where processing.data_processes is [ {...} ]
+        for record in records:
+            self._extract_single_element_lists(record)
+
+        # Use json_normalize for all flattening
+        df = pd.json_normalize(
+            records,
+            sep=self.flatten_separator,
+            max_level=self.max_level,
+        )
+
+        return df
+
+    def _extract_single_element_lists(self, record: dict, max_depth: int = 3):
+        """Recursively extract single-element lists from nested dict."""
+        for key, value in list(record.items()):
+            if isinstance(value, list) and len(value) == 1 and isinstance(value[0], dict):
+                # Replace single-element list of dicts with the dict itself
+                record[key] = value[0]
+                # Recurse into the extracted dict
+                self._extract_single_element_lists(record[key], max_depth - 1)
+            elif isinstance(value, dict) and max_depth > 0:
+                # Recurse into nested dicts
+                self._extract_single_element_lists(value, max_depth - 1)
 
 
 @dataclass
@@ -231,38 +344,89 @@ DEFAULT_CONFIG = AppConfig(
 )
 
 
-# Example: Creating a config for a different project
+# =============================================================================
+# Project Configurations
+# =============================================================================
+
+# Default configuration for Dynamic Foraging Model Fitting project
+DEFAULT_CONFIG = AppConfig(
+    data_loader=DynamicForagingDataLoader(
+        include_metrics=True,
+        include_latent_variables=False,
+        download_figures=False,
+        paginate_settings={"paginate": False},
+    ),
+)
+
+
+# Configuration for Dynamic Foraging NM (Neural Modulation) project
+# Uses GenericDataLoader since there's no specific utility function
+DYNAMIC_FORAGING_NM_CONFIG = AppConfig(
+    app_name="Dynamic Foraging NM Explorer",
+    app_title="Dynamic Foraging NM Explorer",
+    doc_title="Dynamic Foraging NM Explorer",
+    data_loader=GenericDataLoader(
+        collection_name="dynamic-foraging-nm",
+    ),
+    asset=AssetConfig(
+        s3_location_column="location",
+        asset_filename="result.png",
+        viewer_width=900,
+    ),
+    data_table=DataTableConfig(
+        display_columns=[
+            "_id",
+            "subject_id",
+            "session_date",
+        ],
+        frozen_columns=["subject_id", "session_date"],
+    ),
+    id_column="_id",
+    session_date_column="output_parameters.session_date",
+    subject_id_column="output_parameters.subject_id",
+)
+
+
+# =============================================================================
+# Usage Examples
+# =============================================================================
 #
-# class MyProjectDataLoader(DataLoader):
-#     """Custom data loader for my project."""
+# Example 1: Using a different collection with GenericDataLoader
 #
-#     def __init__(self, custom_param: str, another_param: int):
-#         self.custom_param = custom_param
-#         self.another_param = another_param
-#
-#     def load(self, query: dict) -> pd.DataFrame:
-#         # Custom loading logic with project-specific parameters
-#         from my_package import get_my_data
-#         return get_my_data(
-#             query=query,
-#             custom_option=self.custom_param,
-#             numeric_option=self.another_param,
-#         )
-#
-# MY_PROJECT_CONFIG = AppConfig(
-#     app_name="My Project Explorer",
-#     app_title="My Project Explorer",
-#     doc_title="My Project Explorer",
-#     data_loader=MyProjectDataLoader(
-#         custom_param="value",
-#         another_param=42,
+# MY_COLLECTION_CONFIG = AppConfig(
+#     app_name="My Collection Explorer",
+#     data_loader=GenericDataLoader(
+#         collection_name="my-collection-name",
+#         flatten_field="processing.data_processes",
 #     ),
 #     asset=AssetConfig(
-#         s3_location_column="s3_path",
-#         asset_filename="result.png",
+#         s3_location_column="location",
+#         asset_filename="my_figure.png",
 #     ),
-#     data_table=DataTableConfig(
-#         display_columns=["col1", "col2", "col3"],
+# )
+#
+# Example 2: Creating a custom data loader for a specific project
+#
+# class MyCustomDataLoader(DataLoader):
+#     """Custom data loader with project-specific logic."""
+#
+#     def __init__(self, api_endpoint: str, timeout: int = 30):
+#         self.api_endpoint = api_endpoint
+#         self.timeout = timeout
+#
+#     def load(self, query: dict) -> pd.DataFrame:
+#         # Custom implementation
+#         from my_api import fetch_data
+#         return fetch_data(
+#             query=query,
+#             endpoint=self.api_endpoint,
+#             timeout=self.timeout,
+#         )
+#
+# CUSTOM_LOADER_CONFIG = AppConfig(
+#     app_name="Custom API Explorer",
+#     data_loader=MyCustomDataLoader(
+#         api_endpoint="https://api.example.com/data",
 #     ),
 # )
 
