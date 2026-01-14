@@ -64,9 +64,19 @@ class DynamicForagingApp(param.Parameterized):
         self._load_data()
 
     def _get_default_query(self) -> dict:
-        """Get default DocDB query for recent 3 months of data."""
+        """Get default DocDB query for recent 3 months of data.
+
+        Queries both pipeline formats:
+        - Old (prototype): session_date at root level
+        - New (AIND Analysis Framework): session_date nested in processing.data_processes
+        """
         three_months_ago = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
-        return {"session_date": {"$gte": three_months_ago}}
+        return {
+            "$or": [
+                {"session_date": {"$gte": three_months_ago}},
+                {"processing.data_processes.output_parameters.session_date": {"$gte": three_months_ago}}
+            ]
+        }
 
     def _load_data(self, custom_query: dict = None) -> str:
         """Load data from the dynamic-foraging-model-fitting collection."""
