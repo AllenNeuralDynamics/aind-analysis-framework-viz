@@ -460,9 +460,9 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
 # =============================================================================
 
 curdoc = curdoc()
-curdoc.title = "AIND Analysis Framework Explorer"
 
 # Create and serve the app
 app = AINDAnalysisFrameworkApp()
+curdoc.title = app.current_config.doc_title
 layout = app.main_layout()
 layout.servable()

@@ -309,9 +309,8 @@ class AppConfig:
     """
 
     # App metadata
-    app_name: str = "Dynamic Foraging Model Fitting Explorer"
-    app_title: str = "Dynamic Foraging Model Fitting Explorer"
-    doc_title: str = "Dynamic Foraging Model Fitting Explorer"
+    app_title: str = "AIND Analysis Framework Explorer"
+    doc_title: str = "AIND Analysis Framework Explorer"
 
     # Data loader - implements the DataLoader interface
     # Each project should provide their own loader implementation
@@ -350,6 +349,8 @@ DYNAMIC_FORAGING_MODEL_FITTING_CONFIG = AppConfig(
 
 # Default configuration for Dynamic Foraging Model Fitting project
 DYNAMIC_FORAGING_MODEL_FITTING_CONFIG = AppConfig(
+    app_title="AIND Analysis Framework Explorer - Model Fitting",
+    doc_title="AIND Analysis Framework Explorer - Model Fitting",
     data_loader=DynamicForagingDataLoader(
         include_metrics=True,
         include_latent_variables=False,
@@ -362,9 +363,8 @@ DYNAMIC_FORAGING_MODEL_FITTING_CONFIG = AppConfig(
 # Configuration for Dynamic Foraging NM (Neural Modulation) project
 # Uses GenericDataLoader since there's no specific utility function
 DYNAMIC_FORAGING_NM_CONFIG = AppConfig(
-    app_name="Dynamic Foraging NM Explorer",
-    app_title="Dynamic Foraging NM Explorer",
-    doc_title="Dynamic Foraging NM Explorer",
+    app_title="AIND Analysis Framework Explorer - NM",
+    doc_title="AIND Analysis Framework Explorer - NM",
     data_loader=GenericDataLoader(
         collection_name="dynamic-foraging-nm",
     ),
@@ -394,7 +394,8 @@ DYNAMIC_FORAGING_NM_CONFIG = AppConfig(
 # Example 1: Using a different collection with GenericDataLoader
 #
 # MY_COLLECTION_CONFIG = AppConfig(
-#     app_name="My Collection Explorer",
+#     app_title="My Collection Explorer",
+#     doc_title="My Collection Explorer",
 #     data_loader=GenericDataLoader(
 #         collection_name="my-collection-name",
 #         flatten_field="processing.data_processes",
@@ -424,7 +425,8 @@ DYNAMIC_FORAGING_NM_CONFIG = AppConfig(
 #         )
 #
 # CUSTOM_LOADER_CONFIG = AppConfig(
-#     app_name="Custom API Explorer",
+#     app_title="AIND Analysis Framework Explorer - Custom API",
+#     doc_title="AIND Analysis Framework Explorer - Custom API",
 #     data_loader=MyCustomDataLoader(
 #         api_endpoint="https://api.example.com/data",
 #     ),
