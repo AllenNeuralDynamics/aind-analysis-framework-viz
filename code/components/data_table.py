@@ -104,9 +104,7 @@ class DataTable(BaseComponent):
 
         self.table_widget.param.watch(on_selection, "selection")
 
-        # Sync to URL - register sync for each table widget instance
-        # Note: We need to sync each time since a new widget is created on each render
-        location = pn.state.location
-        location.sync(self.table_widget, {'selection': 'selected'})
+        # Sync to URL for this table widget instance
+        pn.state.location.sync(self.table_widget, {'selection': 'selected'})
 
         return self.table_widget

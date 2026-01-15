@@ -118,6 +118,18 @@ class AINDAnalysisFrameworkApp(BaseApp):
         """Handle project selection change - loads data immediately."""
         project_name = event.new
 
+        # Prevent re-entry during project change (avoids URL sync loops)
+        if getattr(self, '_changing_project', False):
+            return
+        self._changing_project = True
+
+        try:
+            self._handle_project_change(project_name)
+        finally:
+            self._changing_project = False
+
+    def _handle_project_change(self, project_name: str):
+        """Internal handler for project change."""
         # Handle placeholder selection
         if project_name == self._PROJECT_PLACEHOLDER:
             self.data_holder.filtered_df = pd.DataFrame()
@@ -134,7 +146,17 @@ class AINDAnalysisFrameworkApp(BaseApp):
 
             _, config = PROJECT_REGISTRY[project_name]
             self.current_config = config
-            self._init_components()
+
+            # Update config in existing components (don't recreate to avoid URL sync issues)
+            for component in self._components.values():
+                component.config = config
+
+            # Update asset viewer config
+            if self.asset_viewer:
+                self.asset_viewer.s3_location_column = config.asset.s3_location_column
+                self.asset_viewer.asset_filename = config.asset.asset_filename
+                self.asset_viewer.width = config.asset.viewer_width
+                self.asset_viewer.info_columns = config.asset.info_columns
 
             # Reset data state before loading
             self.data_holder.filtered_df = pd.DataFrame()
@@ -143,6 +165,13 @@ class AINDAnalysisFrameworkApp(BaseApp):
             self.data_holder.is_loaded = False
             self.data_holder.load_status = ""
             self.df_full = None
+
+            # On project switch (not initial load), clear filter and selection
+            if not is_initial_load:
+                filter_panel = self._components.get("filter_panel")
+                if filter_panel and hasattr(filter_panel, "filter_query_widget"):
+                    filter_panel.filter_query_widget.value = ""
+                self._clear_table_selection()
 
             logger.info(f"Project changed to: {project_name}")
 
@@ -334,18 +363,12 @@ class AINDAnalysisFrameworkApp(BaseApp):
         )
 
     def _sync_url_state(self):
-        """Centralize URL sync logic for the app.
+        """Sync project selector to URL.
 
-        Syncs widgets to URL parameters for shareable links.
-        Follows the two-way sync pattern from LCNE-patchseq-viz.
-
-        Note: FilterPanel, ColumnSelector, and DataTable handle their own
-        URL sync since their widgets are created during component initialization.
+        Note: FilterPanel, ColumnSelector, and DataTable sync their own
+        params (filter, cols, selected) in their create() methods.
         """
-        location = pn.state.location
-
-        # Sync project selector to URL (only immediate widget in app)
-        location.sync(self.project_selector, {'value': 'project'})
+        pn.state.location.sync(self.project_selector, {"value": "project"})
 
     def main_layout(self) -> pn.template.GoldenTemplate:
         """Construct the full application layout."""
