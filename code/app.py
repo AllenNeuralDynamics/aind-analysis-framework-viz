@@ -231,6 +231,9 @@ class AINDAnalysisFrameworkApp(BaseApp):
             <p style="margin-top: 20px; color: #888; font-size: 0.9em;">
                 This explorer supports multiple AIND analysis collections. Select a project to view its data.
             </p>
+            <p style="margin-top: 30px; color: #aaa; font-size: 0.8em;">
+                Built by Han Hou and Claude Code
+            </p>
         </div>
         """
 
