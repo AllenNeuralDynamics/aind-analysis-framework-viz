@@ -124,3 +124,13 @@ See `.claude/skills/panel-architecture.md` for:
 ## Documentation Conventions
 
 - Root `README.md` is for Hugging Face Space metadata and should link to `.github/README.md` for details
+
+## Release Workflow
+
+- **Version Bumping**: Bump version using semantic versioning before issuing any PR
+  - **MAJOR** (X.0.0): Breaking changes, API redesigns
+  - **MINOR** (0.X.0): New features, backward-compatible additions
+  - **PATCH** (0.0.X): Bug fixes, small improvements
+- **Files to update**:
+  - `code/__init__.py` - `__version__` variable
+  - `pyproject.toml` - `version` field in `[project]` section
