@@ -496,6 +496,7 @@ class ScatterPlot(BaseComponent):
         # Side-by-side layout: controls on left, plot on right
         return pn.Row(
             controls,
+            pn.Spacer(width=20),
             pn.Column(
                 pn.pane.Markdown("### Scatter Plot"),
                 plot,
