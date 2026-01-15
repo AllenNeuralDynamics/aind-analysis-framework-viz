@@ -204,6 +204,55 @@ location.sync(
 https://myapp.com?tab=1&cell_id=12345&sweep=52&scatter_x=Y+(A+--+P)&scatter_y=ipfx_tau&scatter_color=injection+region&scatter_alpha=0.7&scatter_gmm=true
 ```
 
+#### Initialization and Auto-Load with `pn.state.onload()`
+
+**Handling Missing URL Parameters**: When URL params are missing, widgets keep their default `value`. When present, widgets update to match.
+
+**Auto-Load Pattern**: Trigger actions on page load using `pn.state.onload()`:
+
+```python
+def _sync_url_state(self, tabs, project_selector, filter_query=None):
+    """Centralize all URL sync logic for the app."""
+    location = pn.state.location
+
+    # Sync widgets
+    location.sync(project_selector, {'value': 'project'})
+    location.sync(tabs, {'active': 'tab'})
+    location.sync(filter_query, {'value': 'query'})
+
+    # Auto-load data on page load if project is in URL
+    if not hasattr(self, '_autoload_registered'):
+        def _autoload_on_page_load():
+            # Check if project was specified in URL (not default)
+            url_project = pn.state.location.query.get('project')
+            if url_project and url_project != project_selector.value:
+                # Project in URL differs from default - trigger load
+                self.load_data()
+
+        pn.state.onload(_autoload_on_page_load)
+        self._autoload_registered = True
+```
+
+**Using URL Context Directly** (alternative approach):
+
+```python
+def main_layout(self):
+    # ... create widgets ...
+
+    # Check URL before syncing
+    location = pn.state.location
+    url_project = location.query.get('project', [None])[0]
+
+    if url_project and url_project in PROJECT_REGISTRY:
+        # URL has valid project - select it
+        self.project_selector.value = url_project
+        # Load data immediately
+        self.load_data()
+
+    # Now sync for ongoing changes
+    location.sync(self.project_selector, {'value': 'project'})
+```
+
 ## Layout Patterns
 
 ### BootstrapTemplate
@@ -358,18 +407,77 @@ color = {"field": "value", "transform": mapper}
 
 ### Code Organization
 
+**Recommended layered architecture for Panel apps:**
+
 ```
 code/
-├── app.py              # Main app class and entry point
-├── core/
-│   ├── base_app.py     # Base class with common patterns
-│   └── data_loader.py  # Data fetching logic
-├── components/
-│   ├── scatter_plot.py # Visualization components
-│   ├── data_table.py   # Table display
-│   └── filter_panel.py # Filter UI
+├── app.py                 # Entry point only
+├── config/                # Configuration layer (no logic)
+│   ├── __init__.py        # Re-exports for backward compatibility
+│   ├── models.py          # Pure dataclasses (AppConfig, AssetConfig, etc.)
+│   └── projects.py        # Project-specific configs + registry
+├── data/                  # Data layer (backend)
+│   ├── __init__.py
+│   ├── loaders.py         # DataLoader classes with caching
+│   └── transformers.py    # Data processing utilities (optional)
+├── core/                  # Business logic
+│   ├── base_app.py        # App orchestration, state management
+│   └── data_holder.py     # Reactive state (param-based)
+├── components/            # UI layer (frontend)
+│   ├── base.py            # Base component class
+│   ├── scatter_plot.py    # Visualization components
+│   ├── data_table.py      # Table display
+│   ├── filter_panel.py    # Filter UI
+│   └── ...                # Other UI components
 └── utils/
-    └── export.py       # SVG/figure export
+    └── helpers.py         # Shared utilities
+```
+
+**Design principles:**
+
+| Layer | Responsibility | Depends On |
+|-------|---------------|------------|
+| **Config** | Pure configuration data | Nothing |
+| **Data** | Fetch, cache, transform | Config |
+| **Core** | State management, orchestration | Data, Config |
+| **Components** | UI rendering, user interaction | Core, Config |
+| **App** | Wire everything together | All |
+
+**Benefits:**
+- Testability: Loaders can be tested without UI
+- Reusability: Same loaders work for CLI, notebooks, or API
+- Clear dependencies: No circular imports
+- Separation: UI changes don't affect data logic
+
+**Data Layer with Caching:**
+
+```python
+# data/loaders.py
+import json
+import pandas as pd
+import panel as pn
+
+# Cache configuration
+CACHE_MAX_ITEMS = 10
+CACHE_POLICY = "LRU"
+CACHE_TTL = 3600  # 1 hour
+
+class DataLoader:
+    def load(self, query: dict) -> pd.DataFrame:
+        """Load data with automatic caching."""
+        query_key = json.dumps(query, sort_keys=True, default=str)
+        return self._load_cached(query_key)
+    
+    @staticmethod
+    @pn.cache(max_items=CACHE_MAX_ITEMS, policy=CACHE_POLICY, ttl=CACHE_TTL)
+    def _load_cached(query_key: str) -> pd.DataFrame:
+        # Actual data fetching logic
+        query = json.loads(query_key)
+        return fetch_from_database(query)
+    
+    def clear_cache(self):
+        if hasattr(self._load_cached, "clear"):
+            self._load_cached.clear()
 ```
 
 ### Error Handling
