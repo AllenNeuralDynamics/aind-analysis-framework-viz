@@ -387,7 +387,10 @@ class AINDAnalysisFrameworkApp(BaseApp):
         main_content = self.create_main_content()
         sidebar_content = self.create_sidebar()
 
-        template = pn.template.GoldenTemplate(title=self.current_config.app_title)
+        template = pn.template.GoldenTemplate(
+            title=self.current_config.app_title,
+            favicon="https://emoji.farfrc.app/📈"
+        )
 
         # Add content to the template
         template.sidebar.append(sidebar_content)
