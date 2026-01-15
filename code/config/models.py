@@ -164,6 +164,7 @@ class ScatterPlotConfig:
     # Plot dimensions
     width: int = 600
     height: int = 500
+    font_size: int = 12
 
     # Available color palettes
     color_palettes: list[str] = field(

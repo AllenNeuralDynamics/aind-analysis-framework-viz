@@ -107,6 +107,32 @@ class ScatterPlot(BaseComponent):
             width=180,
         )
 
+        # Plot settings
+        self.width_slider = pn.widgets.IntSlider(
+            name="Width",
+            start=300,
+            end=1600,
+            step=50,
+            value=scatter_config.width,
+            width=180,
+        )
+        self.height_slider = pn.widgets.IntSlider(
+            name="Height",
+            start=250,
+            end=1200,
+            step=50,
+            value=scatter_config.height,
+            width=180,
+        )
+        self.font_size_slider = pn.widgets.IntSlider(
+            name="Font Size",
+            start=8,
+            end=24,
+            step=1,
+            value=scatter_config.font_size,
+            width=180,
+        )
+
     def _get_numeric_columns(self, df: pd.DataFrame) -> list[str]:
         """Get list of numeric columns from DataFrame."""
         return df.select_dtypes(include=[np.number]).columns.tolist()
@@ -217,6 +243,9 @@ class ScatterPlot(BaseComponent):
         size_col: str | None,
         palette: str,
         alpha: float,
+        plot_width: int,
+        plot_height: int,
+        font_size: int,
     ):
         """Create the Bokeh scatter plot figure."""
         scatter_config = self.config.scatter_plot
@@ -324,8 +353,8 @@ class ScatterPlot(BaseComponent):
             title=f"{y_col} vs {x_col}",
             x_axis_label=x_col,
             y_axis_label=y_col,
-            width=scatter_config.width,
-            height=scatter_config.height,
+            width=int(plot_width),
+            height=int(plot_height),
             tools="pan,wheel_zoom,box_zoom,reset",
             active_drag="box_zoom",
         )
@@ -364,12 +393,17 @@ class ScatterPlot(BaseComponent):
 
         # Add color bar for continuous mappings
         if color_column:
-            add_color_bar(p, color_mapper, color_column, font_size=12)
+            add_color_bar(p, color_mapper, color_column, font_size=font_size)
 
         # Style the plot
-        p.title.text_font_size = "14pt"
-        p.xaxis.axis_label_text_font_size = "12pt"
-        p.yaxis.axis_label_text_font_size = "12pt"
+        title_size = max(8, int(font_size) + 2)
+        label_size = max(8, int(font_size))
+        tick_size = max(6, int(font_size) - 2)
+        p.title.text_font_size = f"{title_size}pt"
+        p.xaxis.axis_label_text_font_size = f"{label_size}pt"
+        p.yaxis.axis_label_text_font_size = f"{label_size}pt"
+        p.xaxis.major_label_text_font_size = f"{tick_size}pt"
+        p.yaxis.major_label_text_font_size = f"{tick_size}pt"
 
         self._latest_figure = p
         return pn.pane.Bokeh(p, sizing_mode="stretch_width")
@@ -383,6 +417,9 @@ class ScatterPlot(BaseComponent):
         size_col: str,
         palette: str,
         alpha: float,
+        plot_width: int,
+        plot_height: int,
+        font_size: int,
     ):
         """Render the scatter plot with current settings."""
         try:
@@ -390,7 +427,16 @@ class ScatterPlot(BaseComponent):
             self._update_column_options(df)
 
             return self._create_figure(
-                df, x_col, y_col, color_col, size_col, palette, alpha
+                df,
+                x_col,
+                y_col,
+                color_col,
+                size_col,
+                palette,
+                alpha,
+                plot_width,
+                plot_height,
+                font_size,
             )
         except Exception as e:
             logger.error(f"Error rendering scatter plot: {e}")
@@ -419,8 +465,16 @@ class ScatterPlot(BaseComponent):
             # Size settings
             self.size_select,
             pn.layout.Divider(),
-            # Visual settings
-            self.alpha_slider,
+            # Plot settings
+            pn.Card(
+                self.alpha_slider,
+                self.width_slider,
+                self.height_slider,
+                self.font_size_slider,
+                title="Plot settings",
+                collapsed=False,
+                sizing_mode="stretch_width",
+            ),
             width=200,
         )
 
@@ -434,6 +488,9 @@ class ScatterPlot(BaseComponent):
             size_col=self.size_select,
             palette=self.palette_select,
             alpha=self.alpha_slider,
+            plot_width=self.width_slider,
+            plot_height=self.height_slider,
+            font_size=self.font_size_slider,
         )
 
         # Side-by-side layout: controls on left, plot on right
