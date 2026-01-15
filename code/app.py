@@ -349,6 +349,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
                 ("Scatter Plot", scatter_plot),
                 sizing_mode="stretch_width",
             )
+            pn.state.location.sync(tabs, {"active": "tab"})
 
             return pn.Column(
                 count_display,
