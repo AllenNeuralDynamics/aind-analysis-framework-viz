@@ -7,7 +7,7 @@ Add new projects here to make them available in the app.
 
 from data import DynamicForagingDataLoader, GenericDataLoader
 
-from .models import AppConfig, AssetConfig, DataTableConfig, QueryConfig
+from .models import AppConfig, AssetConfig, DataTableConfig, QueryConfig, ScatterPlotConfig
 
 
 # =============================================================================
@@ -21,6 +21,12 @@ DYNAMIC_FORAGING_MODEL_FITTING_CONFIG = AppConfig(
         include_latent_variables=False,
         download_figures=False,
         paginate_settings={"paginate": False},
+    ),
+    scatter_plot=ScatterPlotConfig(
+        x_column="n_trials",
+        y_column="prediction_accuracy",
+        color_column="agent_alias",
+        tooltip_image_column="S3_location",
     ),
 )
 
@@ -58,6 +64,9 @@ DYNAMIC_FORAGING_NM_CONFIG = AppConfig(
     query=QueryConfig(
         default_query={},  # Empty query since this collection doesn't have session_date
         default_days_back=90,
+    ),
+    scatter_plot=ScatterPlotConfig(
+        tooltip_image_column="location",
     ),
     id_column="_id",
     session_date_column="processing.data_processes.end_date_time",
@@ -98,6 +107,9 @@ DYNAMIC_FORAGING_LIFETIME_CONFIG = AppConfig(
     query=QueryConfig(
         default_query={},  # Empty query since this collection doesn't have session_date
         default_days_back=90,
+    ),
+    scatter_plot=ScatterPlotConfig(
+        tooltip_image_column="location",
     ),
     id_column="_id",
     session_date_column="processing.data_processes.end_date_time",
