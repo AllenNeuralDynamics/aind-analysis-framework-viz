@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .loaders import DataLoader
+    from data import DataLoader
 
 
 @dataclass
