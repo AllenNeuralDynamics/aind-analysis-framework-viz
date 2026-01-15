@@ -389,7 +389,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
 
         template = pn.template.GoldenTemplate(
             title=self.current_config.app_title,
-            favicon="https://emoji.farfrc.app/📈"
+            favicon="static/favicon.svg"
         )
 
         # Add content to the template
