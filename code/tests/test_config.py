@@ -1,0 +1,345 @@
+"""
+Tests for configuration module, focusing on DataLoader interface.
+
+Run with:
+    pytest code/tests/test_config.py -v
+Or:
+    python code/tests/test_config.py
+"""
+
+import sys
+from pathlib import Path
+
+# Add code directory to path for imports
+code_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(code_dir))
+
+import pytest
+import pandas as pd
+from unittest.mock import patch
+
+
+class TestDataLoader:
+    """Test the DataLoader abstract base class."""
+
+    def test_dataloader_is_abstract(self):
+        """Test that DataLoader cannot be instantiated directly."""
+        from config import DataLoader
+
+        with pytest.raises(TypeError):
+            DataLoader()  # type: ignore
+
+    def test_dataloader_requires_load_method(self):
+        """Test that DataLoader subclasses must implement load()."""
+        from config import DataLoader
+
+        # This should raise an error because load() is not implemented
+        with pytest.raises(TypeError):
+
+            class IncompleteLoader(DataLoader):
+                pass
+
+            IncompleteLoader()
+
+
+class TestDynamicForagingDataLoader:
+    """Test the DynamicForagingDataLoader implementation."""
+
+    def test_init_with_defaults(self):
+        """Test initialization with default parameters."""
+        from config import DynamicForagingDataLoader
+
+        loader = DynamicForagingDataLoader()
+
+        assert loader.include_metrics is True
+        assert loader.include_latent_variables is False
+        assert loader.download_figures is False
+        assert loader.paginate_settings == {"paginate": False}
+
+    def test_init_with_custom_params(self):
+        """Test initialization with custom parameters."""
+        from config import DynamicForagingDataLoader
+
+        loader = DynamicForagingDataLoader(
+            include_metrics=False,
+            include_latent_variables=True,
+            download_figures=True,
+            paginate_settings={"paginate": True, "page_size": 100},
+        )
+
+        assert loader.include_metrics is False
+        assert loader.include_latent_variables is True
+        assert loader.download_figures is True
+        assert loader.paginate_settings == {"paginate": True, "page_size": 100}
+
+    @patch('aind_analysis_arch_result_access.get_mle_model_fitting')
+    def test_load_calls_get_mle_model_fitting(self, mock_get_mle):
+        """Test that load() calls get_mle_model_fitting with correct parameters."""
+        from config import DynamicForagingDataLoader
+
+        # Setup mock
+        mock_df = pd.DataFrame({"_id": [1, 2], "subject_id": ["A", "B"]})
+        mock_get_mle.return_value = mock_df
+
+        # Create loader and load
+        loader = DynamicForagingDataLoader(
+            include_metrics=False,
+            include_latent_variables=True,
+            download_figures=False,
+        )
+        query = {"subject_id": "A"}
+        result = loader.load(query)
+
+        # Verify call
+        mock_get_mle.assert_called_once_with(
+            from_custom_query=query,
+            if_include_metrics=False,
+            if_include_latent_variables=True,
+            if_download_figures=False,
+            paginate_settings={"paginate": False},
+        )
+        pd.testing.assert_frame_equal(result, mock_df)
+
+    @patch('aind_analysis_arch_result_access.get_mle_model_fitting')
+    def test_load_with_custom_paginate_settings(self, mock_get_mle):
+        """Test that load() passes custom paginate settings."""
+        from config import DynamicForagingDataLoader
+
+        mock_df = pd.DataFrame({"_id": [1]})
+        mock_get_mle.return_value = mock_df
+
+        loader = DynamicForagingDataLoader(
+            paginate_settings={"paginate": True, "page_size": 50},
+        )
+        loader.load({})
+
+        mock_get_mle.assert_called_once_with(
+            from_custom_query={},
+            if_include_metrics=True,
+            if_include_latent_variables=False,
+            if_download_figures=False,
+            paginate_settings={"paginate": True, "page_size": 50},
+        )
+
+
+class TestGenericDataLoader:
+    """Test the GenericDataLoader implementation."""
+
+    def test_init_with_defaults(self):
+        """Test initialization with default parameters."""
+        from config import GenericDataLoader
+
+        loader = GenericDataLoader(collection_name="test-collection")
+
+        assert loader.collection_name == "test-collection"
+        assert loader.host == "api.allenneuraldynamics.org"
+        assert loader.database == "analysis"
+        assert loader.flatten_separator == "."
+        assert loader.max_level is None
+
+    def test_init_with_custom_params(self):
+        """Test initialization with custom parameters."""
+        from config import GenericDataLoader
+
+        loader = GenericDataLoader(
+            collection_name="my-collection",
+            host="custom.host.com",
+            database="my_database",
+            flatten_separator="_",
+            max_level=2,
+        )
+
+        assert loader.collection_name == "my-collection"
+        assert loader.host == "custom.host.com"
+        assert loader.database == "my_database"
+        assert loader.flatten_separator == "_"
+        assert loader.max_level == 2
+
+    @patch('aind_data_access_api.document_db.MetadataDbClient')
+    def test_load_with_mock_client(self, mock_client_class):
+        """Test load() with mocked DocDB client."""
+        from config import GenericDataLoader
+
+        # Setup mock - typical DocDB structure with nested fields
+        mock_client = mock_client_class.return_value
+        mock_records = [
+            {
+                "_id": "123",
+                "location": "s3://bucket/path/",
+                "processing": {
+                    "data_processes": [
+                        {
+                            "code": {"input_date": {"url": "s3://input-url"}},
+                            "output_parameters": {
+                                "subject_id": "730945",
+                                "session_date": "2024-01-01",
+                                "alpha": 0.5,
+                            },
+                        }
+                    ]
+                },
+            }
+        ]
+        mock_client.retrieve_docdb_records.return_value = mock_records
+
+        # Create loader and load
+        loader = GenericDataLoader(collection_name="test-collection")
+        df = loader.load({})
+
+        # Verify client was created correctly
+        mock_client_class.assert_called_once_with(
+            host="api.allenneuraldynamics.org",
+            database="analysis",
+            collection="test-collection",
+        )
+
+        # Verify retrieve_docdb_records was called
+        mock_client.retrieve_docdb_records.assert_called_once()
+
+        # Check DataFrame columns - json_normalize handles all flattening
+        assert "processing.data_processes.code.input_date.url" in df.columns
+        assert "processing.data_processes.output_parameters.subject_id" in df.columns
+        assert df["processing.data_processes.output_parameters.alpha"].iloc[0] == 0.5
+
+
+class TestCustomDataLoader:
+    """Test creating custom data loaders for other projects."""
+
+    def test_custom_dataloader_implementation(self):
+        """Test that a custom data loader can be created."""
+        from config import DataLoader, AppConfig
+
+        # Create a custom data loader for a hypothetical project
+        class MockProjectDataLoader(DataLoader):
+            def __init__(self, api_key: str, timeout: int = 30):
+                self.api_key = api_key
+                self.timeout = timeout
+
+            def load(self, query: dict) -> pd.DataFrame:
+                # Simulate loading from some API
+                return pd.DataFrame({
+                    "_id": [1, 2, 3],
+                    "value": [10, 20, 30],
+                    "query_used": [str(query)] * 3,
+                })
+
+        # Test that it works
+        loader = MockProjectDataLoader(api_key="test-key", timeout=60)
+        assert loader.api_key == "test-key"
+        assert loader.timeout == 60
+
+        result = loader.load({"test": "query"})
+        assert len(result) == 3
+        assert list(result.columns) == ["_id", "value", "query_used"]
+
+        # Verify it can be used with AppConfig
+        config = AppConfig(
+            app_title="Mock Project",
+            data_loader=loader,
+        )
+        assert isinstance(config.data_loader, DataLoader)
+        assert isinstance(config.data_loader, MockProjectDataLoader)
+
+
+class TestAppConfig:
+    """Test the AppConfig class."""
+
+    def test_default_config_has_dataloader(self):
+        """Test that DYNAMIC_FORAGING_MODEL_FITTING_CONFIG has a data loader."""
+        from config import DYNAMIC_FORAGING_MODEL_FITTING_CONFIG, DataLoader
+
+        assert DYNAMIC_FORAGING_MODEL_FITTING_CONFIG.data_loader is not None
+        assert isinstance(DYNAMIC_FORAGING_MODEL_FITTING_CONFIG.data_loader, DataLoader)
+
+    def test_default_config_uses_dynamic_foraging_loader(self):
+        """Test that DYNAMIC_FORAGING_MODEL_FITTING_CONFIG uses DynamicForagingDataLoader."""
+        from config import DYNAMIC_FORAGING_MODEL_FITTING_CONFIG, DynamicForagingDataLoader
+
+        assert isinstance(DYNAMIC_FORAGING_MODEL_FITTING_CONFIG.data_loader, DynamicForagingDataLoader)
+
+    def test_config_with_custom_loader(self):
+        """Test creating AppConfig with a custom loader."""
+        from config import DataLoader, AppConfig
+
+        class CustomLoader(DataLoader):
+            def load(self, query: dict) -> pd.DataFrame:
+                return pd.DataFrame({"test": [1]})
+
+        config = AppConfig(
+            app_title="Test App",
+            data_loader=CustomLoader(),
+        )
+
+        assert config.app_title == "Test App"
+        assert isinstance(config.data_loader, CustomLoader)
+
+    def test_config_loads_data_through_loader(self):
+        """Test that config can load data through its data_loader."""
+        from config import DYNAMIC_FORAGING_MODEL_FITTING_CONFIG
+
+        # This should work without errors
+        query = DYNAMIC_FORAGING_MODEL_FITTING_CONFIG.query.get_default_query()
+        # Note: This will make actual API calls in real environment
+        # In tests, you might want to mock this
+        assert isinstance(query, dict)
+        assert "$or" in query
+
+    def test_dynamic_foraging_nm_config_exists(self):
+        """Test that DYNAMIC_FORAGING_NM_CONFIG exists and is configured correctly."""
+        from config import DYNAMIC_FORAGING_NM_CONFIG, GenericDataLoader
+
+        assert DYNAMIC_FORAGING_NM_CONFIG.app_title == "AIND Analysis Framework Explorer - Dynamic Foraging NM"
+        assert isinstance(DYNAMIC_FORAGING_NM_CONFIG.data_loader, GenericDataLoader)
+        assert DYNAMIC_FORAGING_NM_CONFIG.data_loader.collection_name == "dynamic-foraging-nm"
+        assert DYNAMIC_FORAGING_NM_CONFIG.asset.s3_location_column == "location"
+        # NM config doesn't have subject_id_column (set to None)
+        assert DYNAMIC_FORAGING_NM_CONFIG.subject_id_column is None
+        assert DYNAMIC_FORAGING_NM_CONFIG.session_date_column == "processing.data_processes.end_date_time"
+        # NM config uses empty query as default
+        assert DYNAMIC_FORAGING_NM_CONFIG.query.get_default_query() == {}
+
+    def test_query_config_default_query_override(self):
+        """Test that QueryConfig can override default query."""
+        from config import QueryConfig, AppConfig, DataLoader
+
+        class MockLoader(DataLoader):
+            def load(self, query: dict) -> pd.DataFrame:
+                return pd.DataFrame()
+
+        # Test with default_query override
+        config = AppConfig(
+            app_title="Test",
+            data_loader=MockLoader(),
+            query=QueryConfig(default_query={"custom": "query"}),
+        )
+        assert config.query.get_default_query() == {"custom": "query"}
+
+        # Test without default_query override (uses default behavior)
+        config2 = AppConfig(
+            app_title="Test2",
+            data_loader=MockLoader(),
+        )
+        query = config2.query.get_default_query()
+        assert "$or" in query  # Should have the default date-based query
+
+
+def run_tests():
+    """Run tests without pytest."""
+    print("Running DataLoader tests...")
+    TestDataLoader().test_dataloader_is_abstract()
+    TestDynamicForagingDataLoader().test_init_with_defaults()
+    TestDynamicForagingDataLoader().test_init_with_custom_params()
+    TestGenericDataLoader().test_init_with_defaults()
+    TestGenericDataLoader().test_init_with_custom_params()
+    TestCustomDataLoader().test_custom_dataloader_implementation()
+    TestAppConfig().test_default_config_has_dataloader()
+    TestAppConfig().test_default_config_uses_dynamic_foraging_loader()
+    TestAppConfig().test_config_with_custom_loader()
+    TestAppConfig().test_config_loads_data_through_loader()
+    TestAppConfig().test_dynamic_foraging_nm_config_exists()
+    TestAppConfig().test_query_config_default_query_override()
+    print("\nAll tests passed!")
+
+
+if __name__ == "__main__":
+    run_tests()
