@@ -142,6 +142,46 @@ class FilterConfig:
 
 
 @dataclass
+class ScatterPlotConfig:
+    """Configuration for the interactive scatter plot component."""
+
+    # Default axis columns (empty string = auto-select first numeric column)
+    x_column: str = ""
+    y_column: str = ""
+    color_column: str = ""
+    size_column: str = ""
+
+    # Column for S3 image URLs in hover tooltips
+    tooltip_image_column: str = ""
+
+    # Visual defaults
+    default_alpha: float = 0.7
+    default_size: int = 10
+    min_size: int = 5
+    max_size: int = 40
+    default_gamma: float = 1.0
+
+    # Plot dimensions
+    width: int = 600
+    height: int = 500
+
+    # Available color palettes
+    color_palettes: list[str] = field(
+        default_factory=lambda: [
+            "Category10",
+            "Category20",
+            "Viridis256",
+            "Plasma256",
+            "Magma256",
+            "Turbo256",
+        ]
+    )
+
+    # Maximum unique values for categorical color mapping
+    max_categorical_values: int = 50
+
+
+@dataclass
 class AppConfig:
     """
     Main application configuration.
@@ -162,6 +202,7 @@ class AppConfig:
     data_table: DataTableConfig = field(default_factory=DataTableConfig)
     query: QueryConfig = field(default_factory=QueryConfig)
     filter: FilterConfig = field(default_factory=FilterConfig)
+    scatter_plot: ScatterPlotConfig = field(default_factory=ScatterPlotConfig)
 
     # ID column name (used for record selection)
     id_column: str = "_id"
