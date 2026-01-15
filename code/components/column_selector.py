@@ -81,11 +81,9 @@ class ColumnSelector(BaseComponent):
 
         self.column_selector_widget.param.watch(on_column_change, "value")
 
-        # Sync to URL (only once)
-        if not hasattr(self, '_url_sync_registered'):
-            location = pn.state.location
-            location.sync(self.column_selector_widget, {'value': 'cols'})
-            self._url_sync_registered = True
+        # Sync to URL - register sync for each widget instance
+        location = pn.state.location
+        location.sync(self.column_selector_widget, {'value': 'cols'})
 
         # Status message
         if available_cols:

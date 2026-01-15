@@ -74,11 +74,9 @@ class FilterPanel(BaseComponent):
         filter_button.on_click(apply_callback)
         reset_button.on_click(reset_callback)
 
-        # Sync to URL (only once)
-        if not hasattr(self, '_url_sync_registered'):
-            location = pn.state.location
-            location.sync(self.filter_query_widget, {'value': 'filter'})
-            self._url_sync_registered = True
+        # Sync to URL
+        location = pn.state.location
+        location.sync(self.filter_query_widget, {'value': 'filter'})
 
         # Build example queries from config
         examples = "\n**Example queries:**\n"

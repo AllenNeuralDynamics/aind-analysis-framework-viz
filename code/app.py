@@ -190,6 +190,8 @@ class AINDAnalysisFrameworkApp(BaseApp):
 
         if not query_string.strip():
             self.data_holder.filtered_df = self.df_full.copy()
+            self.data_holder.selected_record_ids = []  # Clear selection on reset
+            self._clear_table_selection()  # Clear table widget selection
             return f"Reset to full dataset (N={len(self.df_full)})"
 
         try:
@@ -199,11 +201,19 @@ class AINDAnalysisFrameworkApp(BaseApp):
                 return "Query returned 0 results. Filter not applied."
 
             self.data_holder.filtered_df = filtered.copy()
+            self.data_holder.selected_record_ids = []  # Clear selection on filter
+            self._clear_table_selection()  # Clear table widget selection
             return f"Showing {len(filtered)} of {len(self.df_full)} records"
         except Exception as e:
             logger.error(f"Query error: {e}")
             logger.error(f"Query string was: '{query_string}'")
             return f"Query error: {e}"
+
+    def _clear_table_selection(self):
+        """Clear the table widget's selection to update URL."""
+        data_table = self._components.get("data_table")
+        if data_table and data_table.table_widget is not None:
+            data_table.table_widget.selection = []
 
     def create_project_selector(self) -> pn.Column:
         """Create the project selector panel."""

@@ -92,8 +92,10 @@ class DataTable(BaseComponent):
                 # Get IDs from all selected indices
                 selected_ids = []
                 for idx in event.new:
-                    record_id = str(df.iloc[idx][self.config.id_column])
-                    selected_ids.append(record_id)
+                    # Bounds check to prevent index errors when filter changes
+                    if idx < len(df):
+                        record_id = str(df.iloc[idx][self.config.id_column])
+                        selected_ids.append(record_id)
                 logger.info(f"Selected records: {selected_ids}")
                 self.data_holder.selected_record_ids = selected_ids
             else:
@@ -102,10 +104,9 @@ class DataTable(BaseComponent):
 
         self.table_widget.param.watch(on_selection, "selection")
 
-        # Sync to URL (only once)
-        if not hasattr(self, '_url_sync_registered'):
-            location = pn.state.location
-            location.sync(self.table_widget, {'selection': 'selected'})
-            self._url_sync_registered = True
+        # Sync to URL - register sync for each table widget instance
+        # Note: We need to sync each time since a new widget is created on each render
+        location = pn.state.location
+        location.sync(self.table_widget, {'selection': 'selected'})
 
         return self.table_widget
