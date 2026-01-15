@@ -39,7 +39,6 @@ class FilterPanel(BaseComponent):
         """
         super().__init__(data_holder, config)
         self.apply_filter_callback = apply_filter_callback
-        self.filter_query_widget = None  # Exposed for URL sync
 
     def create(self) -> pn.Column:
         """Create the filter panel UI."""
@@ -74,6 +73,12 @@ class FilterPanel(BaseComponent):
 
         filter_button.on_click(apply_callback)
         reset_button.on_click(reset_callback)
+
+        # Sync to URL (only once)
+        if not hasattr(self, '_url_sync_registered'):
+            location = pn.state.location
+            location.sync(self.filter_query_widget, {'value': 'filter'})
+            self._url_sync_registered = True
 
         # Build example queries from config
         examples = "\n**Example queries:**\n"

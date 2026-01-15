@@ -297,18 +297,13 @@ class AINDAnalysisFrameworkApp(BaseApp):
         Syncs widgets to URL parameters for shareable links.
         Follows the two-way sync pattern from LCNE-patchseq-viz.
 
-        Note: ColumnSelector and DataTable handle their own URL sync
-        since their widgets are created reactively.
+        Note: FilterPanel, ColumnSelector, and DataTable handle their own
+        URL sync since their widgets are created during component initialization.
         """
         location = pn.state.location
 
-        # Sync project selector to URL
+        # Sync project selector to URL (only immediate widget in app)
         location.sync(self.project_selector, {'value': 'project'})
-
-        # Sync filter query to URL
-        filter_panel = self._components.get("filter_panel")
-        if filter_panel and filter_panel.filter_query_widget:
-            location.sync(filter_panel.filter_query_widget, {'value': 'filter'})
 
     def main_layout(self) -> pn.template.GoldenTemplate:
         """Construct the full application layout."""
