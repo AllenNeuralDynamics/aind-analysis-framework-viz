@@ -58,6 +58,26 @@ class ScatterPlot(BaseComponent):
         self._init_controls()
         self._latest_figure = None
         self._source = None
+        self._url_sync_initialized = False
+
+    def _sync_url_state(self) -> None:
+        """Bidirectionally sync widget state to URL query params."""
+        if self._url_sync_initialized:
+            return
+        self._url_sync_initialized = True
+
+        location = pn.state.location
+        location.sync(self.x_select, {"value": "sp_x"})
+        location.sync(self.y_select, {"value": "sp_y"})
+        location.sync(self.color_select, {"value": "sp_color"})
+        location.sync(self.size_select, {"value": "sp_size"})
+        location.sync(self.palette_select, {"value": "sp_palette"})
+        location.sync(self.alpha_slider, {"value": "sp_alpha"})
+        location.sync(self.width_slider, {"value": "sp_w"})
+        location.sync(self.height_slider, {"value": "sp_h"})
+        location.sync(self.font_size_slider, {"value": "sp_fs"})
+        location.sync(self.size_range_slider, {"value": "sp_sr"})
+        location.sync(self.size_gamma_slider, {"value": "sp_sg"})
 
     def _init_controls(self) -> None:
         """Initialize control widgets for the scatter plot."""
@@ -185,14 +205,18 @@ class ScatterPlot(BaseComponent):
         self.size_select.options = ["None"] + numeric_cols
 
         # Set X axis default only if needed
-        if x_was_empty or self.x_select.value not in numeric_cols:
+        if (x_was_empty and self.x_select.value in (None, "")) or (
+            self.x_select.value not in numeric_cols
+        ):
             if scatter_config.x_column and scatter_config.x_column in numeric_cols:
                 self.x_select.value = scatter_config.x_column
             elif numeric_cols:
                 self.x_select.value = numeric_cols[0]
 
         # Set Y axis default only if needed
-        if y_was_empty or self.y_select.value not in numeric_cols:
+        if (y_was_empty and self.y_select.value in (None, "")) or (
+            self.y_select.value not in numeric_cols
+        ):
             if scatter_config.y_column and scatter_config.y_column in numeric_cols:
                 self.y_select.value = scatter_config.y_column
             elif len(numeric_cols) > 1:
@@ -202,7 +226,9 @@ class ScatterPlot(BaseComponent):
 
         # Set Color default only if needed
         color_options = ["None"] + all_cols
-        if color_was_empty or self.color_select.value not in color_options:
+        if (color_was_empty and self.color_select.value in (None, "", "None")) or (
+            self.color_select.value not in color_options
+        ):
             if scatter_config.color_column and scatter_config.color_column in all_cols:
                 self.color_select.value = scatter_config.color_column
             else:
@@ -210,7 +236,9 @@ class ScatterPlot(BaseComponent):
 
         # Set Size default only if needed
         size_options = ["None"] + numeric_cols
-        if size_was_empty or self.size_select.value not in size_options:
+        if (size_was_empty and self.size_select.value in (None, "", "None")) or (
+            self.size_select.value not in size_options
+        ):
             if scatter_config.size_column and scatter_config.size_column in numeric_cols:
                 self.size_select.value = scatter_config.size_column
             else:
@@ -513,6 +541,8 @@ class ScatterPlot(BaseComponent):
             ),
             width=200,
         )
+
+        self._sync_url_state()
 
         # Reactive plot
         plot = pn.bind(
