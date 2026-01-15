@@ -201,6 +201,13 @@ class ScatterPlot(BaseComponent):
                 css_classes=["alert", "alert-info", "p-3"],
             )
 
+        # Check that columns exist in DataFrame
+        if x_col not in df.columns or y_col not in df.columns:
+            return pn.pane.Markdown(
+                f"Selected columns not found in data. Please select valid X and Y axes.",
+                css_classes=["alert", "alert-warning", "p-3"],
+            )
+
         # Filter to rows with valid x/y values
         df_plot = df[[x_col, y_col]].dropna()
         if df_plot.empty:
@@ -299,7 +306,7 @@ class ScatterPlot(BaseComponent):
             source=self._source,
             size="size",
             alpha=alpha,
-            **color_spec,
+            color=color_spec,
         )
 
         # Add hover tool
@@ -347,12 +354,19 @@ class ScatterPlot(BaseComponent):
         alpha: float,
     ):
         """Render the scatter plot with current settings."""
-        # Update column options when data changes
-        self._update_column_options(df)
+        try:
+            # Update column options when data changes
+            self._update_column_options(df)
 
-        return self._create_figure(
-            df, x_col, y_col, color_col, size_col, palette, alpha
-        )
+            return self._create_figure(
+                df, x_col, y_col, color_col, size_col, palette, alpha
+            )
+        except Exception as e:
+            logger.error(f"Error rendering scatter plot: {e}")
+            return pn.pane.Markdown(
+                f"Error rendering scatter plot: {e}",
+                css_classes=["alert", "alert-danger", "p-3"],
+            )
 
     def create(self) -> pn.viewable.Viewable:
         """
