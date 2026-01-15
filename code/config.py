@@ -338,25 +338,12 @@ class AppConfig:
     subject_id_column: str = "subject_id"
 
 
-# Default configuration for Dynamic Foraging Model Fitting project
-DYNAMIC_FORAGING_MODEL_FITTING_CONFIG = AppConfig(
-    data_loader=DynamicForagingDataLoader(
-        include_metrics=True,
-        include_latent_variables=False,
-        download_figures=False,
-        paginate_settings={"paginate": False},
-    ),
-)
-
-
 # =============================================================================
 # Project Configurations
 # =============================================================================
 
 # Default configuration for Dynamic Foraging Model Fitting project
 DYNAMIC_FORAGING_MODEL_FITTING_CONFIG = AppConfig(
-    app_title="AIND Analysis Framework Explorer - Dynamic Foraging Model Fitting",
-    doc_title="AIND Analysis Framework Explorer - Dynamic Foraging Model Fitting",
     data_loader=DynamicForagingDataLoader(
         include_metrics=True,
         include_latent_variables=False,
