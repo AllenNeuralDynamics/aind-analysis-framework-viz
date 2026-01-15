@@ -70,6 +70,7 @@ class AssetViewer:
         s3_location_column: str = "S3_location",
         asset_filename: str = "fitted_session.png",
         width: int = 800,
+        info_columns: Optional[list[str]] = None,
     ):
         """
         Initialize the asset viewer.
@@ -78,10 +79,12 @@ class AssetViewer:
             s3_location_column: Column containing S3 base path
             asset_filename: Filename of the asset within S3 location
             width: Display width for images
+            info_columns: Columns to display in asset info panel (default: subject_id, session_date, agent_alias, n_trials)
         """
         self.s3_location_column = s3_location_column
         self.asset_filename = asset_filename
         self.width = width
+        self.info_columns = info_columns or ["subject_id", "session_date", "agent_alias", "n_trials"]
 
     def get_asset_url(self, s3_location: str) -> Optional[str]:
         """
@@ -165,7 +168,7 @@ class AssetViewer:
 
                 # Build info panel
                 info_items = []
-                for col in ["subject_id", "session_date", "agent_alias", "n_trials"]:
+                for col in self.info_columns:
                     if col in record.index:
                         info_items.append(f"**{col}:** {record[col]}")
 

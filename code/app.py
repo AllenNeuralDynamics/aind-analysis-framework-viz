@@ -80,6 +80,7 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
                 s3_location_column=self.current_config.asset.s3_location_column,
                 asset_filename=self.current_config.asset.asset_filename,
                 width=self.current_config.asset.viewer_width,
+                info_columns=self.current_config.asset.info_columns,
             )
 
     def _on_project_change(self, event):

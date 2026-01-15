@@ -196,6 +196,9 @@ class AssetConfig:
     s3_location_column: str = "S3_location"
     asset_filename: str = "fitted_session.png"
     viewer_width: int = 900
+    info_columns: list[str] = field(default_factory=lambda: [
+        "subject_id", "session_date", "agent_alias", "n_trials"
+    ])
 
     def get_asset_url(self, s3_path: Optional[str], filename: Optional[str] = None) -> Optional[str]:
         """
@@ -367,6 +370,11 @@ DYNAMIC_FORAGING_NM_CONFIG = AppConfig(
         s3_location_column="location",
         asset_filename="result.png",
         viewer_width=900,
+        info_columns=[
+            "processing.data_processes.code.parameters.plot_types",
+            "processing.data_processes.code.parameters.channels",
+            "processing.data_processes.end_date_time",
+        ],
     ),
     data_table=DataTableConfig(
         display_columns=[
@@ -403,6 +411,11 @@ DYNAMIC_FORAGING_LIFETIME_CONFIG = AppConfig(
         s3_location_column="location",
         asset_filename="result.png",
         viewer_width=900,
+        info_columns=[
+            "processing.data_processes.code.parameters.analysis_name",
+            "processing.data_processes.code.parameters.analysis_tag",
+            "processing.data_processes.end_date_time",
+        ],
     ),
     data_table=DataTableConfig(
         display_columns=[
