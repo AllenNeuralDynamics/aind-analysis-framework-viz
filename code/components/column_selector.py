@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, List
 import pandas as pd
 import panel as pn
 
+from utils import get_url_param_list, update_url_param
+
 from .base import BaseComponent
 
 if TYPE_CHECKING:
@@ -26,7 +28,8 @@ class ColumnSelector(BaseComponent):
     def __init__(self, data_holder: "DataHolder", config: "AppConfig"):
         """Initialize the column selector."""
         super().__init__(data_holder, config)
-        self.column_selector_widget = None  # Exposed for URL sync
+        self.column_selector_widget = None
+        self._initial_url_cols = get_url_param_list("cols")  # Read once on init
 
     def create(self) -> pn.viewable.Viewable:
         """
@@ -66,24 +69,28 @@ class ColumnSelector(BaseComponent):
         else:
             available_cols = []
 
+        # Apply initial URL columns if they exist in available columns
+        initial_value = [c for c in self._initial_url_cols if c in available_cols]
+
         # Create multi-select widget
         self.column_selector_widget = pn.widgets.MultiSelect(
             name="",
             options=available_cols,
-            value=[],
+            value=initial_value,
             size=min(15, max(5, len(available_cols))),  # Dynamic size based on options
             sizing_mode="stretch_width",
         )
 
-        # Update data_holder when selection changes
+        # Update data_holder and URL when selection changes
         def on_column_change(event):
             self.data_holder.additional_columns = list(event.new)
+            update_url_param("cols", list(event.new) if event.new else None)
 
         self.column_selector_widget.param.watch(on_column_change, "value")
 
-        # Sync to URL - register sync for each widget instance
-        location = pn.state.location
-        location.sync(self.column_selector_widget, {'value': 'cols'})
+        # Apply initial columns to data_holder
+        if initial_value:
+            self.data_holder.additional_columns = initial_value
 
         # Status message
         if available_cols:
