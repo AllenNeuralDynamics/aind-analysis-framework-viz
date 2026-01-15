@@ -20,6 +20,7 @@ from components.asset_viewer import AssetViewer, get_s3_image_url
 from config import (
     DYNAMIC_FORAGING_MODEL_FITTING_CONFIG,
     DYNAMIC_FORAGING_NM_CONFIG,
+    DYNAMIC_FORAGING_LIFETIME_CONFIG,
     AppConfig,
 )
 
@@ -27,6 +28,7 @@ from config import (
 PROJECT_OPTIONS = {
     "Dynamic Foraging Model Fitting": ("dynamic-foraging-model-fitting", DYNAMIC_FORAGING_MODEL_FITTING_CONFIG),
     "Dynamic Foraging NM": ("dynamic-foraging-nm", DYNAMIC_FORAGING_NM_CONFIG),
+    "Dynamic Foraging Lifetime": ("dynamic-foraging-lifetime", DYNAMIC_FORAGING_LIFETIME_CONFIG),
 }
 
 logging.basicConfig(level=logging.INFO)
@@ -377,6 +379,7 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
                 <ul style="text-align: left; max-width: 500px; margin: 0 auto;">
                     <li><strong>Dynamic Foraging Model Fitting</strong> - MLE model fitting results for behavioral data</li>
                     <li><strong>Dynamic Foraging NM</strong> - Neural modulation analysis results</li>
+                    <li><strong>Dynamic Foraging Lifetime</strong> - Lifetime analysis results</li>
                     <li><em style="color: #888;">More projects coming soon...</em></li>
                 </ul>
             </div>

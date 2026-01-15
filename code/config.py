@@ -402,6 +402,41 @@ DYNAMIC_FORAGING_NM_CONFIG = AppConfig(
     subject_id_column=None,  # Not available in this collection structure
 )
 
+# Configuration for Dynamic Foraging Lifetime project
+# Uses GenericDataLoader since there's no specific utility function
+# Note: This collection has a similar structure to NM - output_parameters is empty
+# Data is in processing.data_processes.code.parameters (analysis_name, analysis_tag, last_n_days, etc.)
+DYNAMIC_FORAGING_LIFETIME_CONFIG = AppConfig(
+    app_title="AIND Analysis Framework Explorer - Dynamic Foraging Lifetime",
+    doc_title="AIND Analysis Framework Explorer - Dynamic Foraging Lifetime",
+    data_loader=GenericDataLoader(
+        collection_name="dynamic-foraging-lifetime",
+    ),
+    asset=AssetConfig(
+        s3_location_column="location",
+        asset_filename="result.png",
+        viewer_width=900,
+    ),
+    data_table=DataTableConfig(
+        display_columns=[
+            "_id",
+            "processing.data_processes.code.parameters.analysis_name",
+            "processing.data_processes.code.parameters.analysis_tag",
+            "processing.data_processes.code.parameters.last_n_days",
+            "processing.data_processes.end_date_time",
+        ],
+        frozen_columns=["_id"],
+    ),
+    query=QueryConfig(
+        default_query={},  # Empty query since this collection doesn't have session_date
+        default_days_back=90,
+    ),
+    id_column="_id",
+    # Note: session_date and subject_id are not available as separate fields in this collection
+    session_date_column="processing.data_processes.end_date_time",
+    subject_id_column=None,  # Not available in this collection structure
+)
+
 
 # =============================================================================
 # Usage Examples
