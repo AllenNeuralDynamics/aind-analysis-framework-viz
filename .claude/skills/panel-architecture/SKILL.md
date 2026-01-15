@@ -81,26 +81,127 @@ class ScatterPlot:
         return layout
 ```
 
-### 4. URL State Synchronization
+### 4. URL State Synchronization (Two-Way Sync)
 
-Persist UI state in URL for shareable links:
+Persist UI state in URL for shareable links. `pn.state.location.sync()` automatically handles **both directions**:
+- URL changes → widget updates (on page load with URL params)
+- Widget changes → URL updates (as user interacts)
+
+#### Centralized URL Sync Pattern
+
+Organize all URL sync logic in a single method in your main app:
 
 ```python
-def sync_url_state(self, tabs, controls):
+def _sync_url_state(self, tabs, spike_controls, filter_query=None):
+    """Centralize all URL sync logic for the app."""
     location = pn.state.location
 
     # Sync tab selection
-    location.sync(tabs, {"active": "tab"})
+    location.sync(tabs, {'active': 'tab'})
 
-    # Sync widget values
-    location.sync(controls["x_axis"], {"value": "x"})
-    location.sync(controls["y_axis"], {"value": "y"})
-
-    # Sync data holder state
+    # Sync data holder parameters (param.Parameterized class)
     location.sync(
         self.data_holder,
-        {"selected_record_id": "record_id"},
+        {
+            'ephys_roi_id_selected': 'cell_id',
+            'sweep_number_selected': 'sweep',
+        },
     )
+
+    # Sync spike analysis controls using a mapping dict
+    spike_mapping = {
+        'extract_from': 'spike_extract',
+        'dim_reduction_method': 'dim_method',
+        'n_clusters': 'n_clusters',
+        'alpha_slider': 'alpha',
+    }
+    for control_name, url_param in spike_mapping.items():
+        location.sync(spike_controls[control_name], {'value': url_param})
+
+    # Sync scatter plot controls via component method
+    self.scatter_plot.sync_controls_to_url()
+
+    # Sync text input
+    if filter_query is not None:
+        location.sync(filter_query, {'value': 'query'})
+```
+
+Call this method at the end of `main_layout()` after all widgets are created:
+```python
+def main_layout(self):
+    # ... create all widgets and layouts ...
+    tabs = pn.Tabs(...)
+    self._sync_url_state(tabs, spike_controls, filter_query)
+    return template
+```
+
+#### Component-Level URL Sync
+
+Each component can have its own `sync_controls_to_url()` method:
+
+```python
+class ScatterPlot:
+    def sync_controls_to_url(self):
+        """Sync scatter plot controls to URL query parameters."""
+        location = pn.state.location
+        mapping = {
+            "x_axis_select": ("value", "scatter_x"),
+            "y_axis_select": ("value", "scatter_y"),
+            "color_col_select": ("value", "scatter_color"),
+            "size_range_slider": ("value", "scatter_size_range"),
+            "alpha_slider": ("value", "scatter_alpha"),
+            "show_gmm": ("value", "scatter_gmm"),
+            "show_linear_fit": ("value", "scatter_linear_fit"),
+        }
+        for control_name, (param_name, url_param) in mapping.items():
+            location.sync(self.controls[control_name], {param_name: url_param})
+```
+
+#### Widget-Specific Sync Patterns
+
+| Widget Type | Parameter | Example |
+|-------------|-----------|---------|
+| **Tabs** | `active` | `location.sync(tabs, {'active': 'tab'})` |
+| **Select** | `value` | `location.sync(select_widget, {'value': 'x_axis'})` |
+| **IntSlider** | `value` | `location.sync(slider, {'value': 'n_clusters'})` |
+| **FloatSlider** | `value` | `location.sync(slider, {'value': 'alpha'})` |
+| **RangeSlider** | `value` | `location.sync(slider, {'value': 'size_range'})` |
+| **Checkbox** | `value` | `location.sync(checkbox, {'value': 'show_gmm'})` |
+| **TextAreaInput** | `value` | `location.sync(text_area, {'value': 'query'})` |
+| **TextInput** | `value` | `location.sync(text_input, {'value': 'search'})` |
+| **DataHolder param** | - | `location.sync(data_holder, {'param_name': 'url_key'})` |
+
+#### DataHolder Parameter Sync
+
+Sync `param.Parameterized` class parameters directly:
+
+```python
+class DataHolder(param.Parameterized):
+    ephys_roi_id_selected = param.String(default="")
+    sweep_number_selected = param.Integer(default=0)
+    filtered_df = param.DataFrame()
+
+# In main app
+location.sync(
+    self.data_holder,
+    {
+        'ephys_roi_id_selected': 'cell_id',    # param_name: url_key
+        'sweep_number_selected': 'sweep',
+    },
+)
+```
+
+#### URL Parameter Best Practices
+
+1. **Use descriptive URL keys**: `scatter_x` instead of `x`
+2. **Prefix by component**: `scatter_alpha`, `spike_n_clusters`
+3. **Keep keys short but readable**: `show_gmm` not `show_gaussian_mixture_model`
+4. **Use consistent naming**: `_{widget_type}` suffix for related params
+
+#### Example URL Result
+
+```
+https://myapp.com?tab=1&cell_id=12345&sweep=52&scatter_x=Y+(A+--+P)&scatter_y=ipfx_tau&scatter_color=injection+region&scatter_alpha=0.7&scatter_gmm=true
 ```
 
 ## Layout Patterns
