@@ -158,7 +158,7 @@ class ScatterPlotConfig:
     default_alpha: float = 0.7
     default_size: int = 10
     min_size: int = 5
-    max_size: int = 40
+    max_size: int = 15
     default_gamma: float = 1.0
 
     # Plot dimensions

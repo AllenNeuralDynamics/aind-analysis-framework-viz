@@ -89,6 +89,23 @@ class ScatterPlot(BaseComponent):
             width=180,
         )
 
+        self.size_range_slider = pn.widgets.RangeSlider(
+            name="Size Range",
+            start=0,
+            end=40,
+            step=1,
+            value=(scatter_config.min_size, scatter_config.max_size),
+            width=180,
+        )
+        self.size_gamma_slider = pn.widgets.FloatSlider(
+            name="Size Gamma",
+            start=0.0,
+            end=3.0,
+            step=0.1,
+            value=scatter_config.default_gamma,
+            width=180,
+        )
+
         # Color palette selector
         self.palette_select = pn.widgets.Select(
             name="Color Palette",
@@ -246,6 +263,8 @@ class ScatterPlot(BaseComponent):
         plot_width: int,
         plot_height: int,
         font_size: int,
+        size_range: tuple[int, int],
+        size_gamma: float,
     ):
         """Create the Bokeh scatter plot figure."""
         scatter_config = self.config.scatter_plot
@@ -286,12 +305,18 @@ class ScatterPlot(BaseComponent):
 
         # Determine size mapping
         size_column = size_col if size_col != "None" else None
+        min_size, max_size = size_range
+        min_size = int(min_size)
+        max_size = int(max_size)
+        if min_size > max_size:
+            min_size, max_size = max_size, min_size
+
         sizes = determine_size_mapping(
             df_valid,
             size_column,
-            scatter_config.min_size,
-            scatter_config.max_size,
-            scatter_config.default_gamma,
+            min_size,
+            max_size,
+            size_gamma,
             scatter_config.default_size,
         )
 
@@ -420,6 +445,8 @@ class ScatterPlot(BaseComponent):
         plot_width: int,
         plot_height: int,
         font_size: int,
+        size_range: tuple[int, int],
+        size_gamma: float,
     ):
         """Render the scatter plot with current settings."""
         try:
@@ -437,6 +464,8 @@ class ScatterPlot(BaseComponent):
                 plot_width,
                 plot_height,
                 font_size,
+                size_range,
+                size_gamma,
             )
         except Exception as e:
             logger.error(f"Error rendering scatter plot: {e}")
@@ -464,6 +493,13 @@ class ScatterPlot(BaseComponent):
             pn.layout.Divider(),
             # Size settings
             self.size_select,
+            pn.Card(
+                self.size_range_slider,
+                self.size_gamma_slider,
+                title="Size settings",
+                collapsed=True,
+                sizing_mode="stretch_width",
+            ),
             pn.layout.Divider(),
             # Plot settings
             pn.Card(
@@ -472,7 +508,7 @@ class ScatterPlot(BaseComponent):
                 self.height_slider,
                 self.font_size_slider,
                 title="Plot settings",
-                collapsed=False,
+                collapsed=True,
                 sizing_mode="stretch_width",
             ),
             width=200,
@@ -491,6 +527,8 @@ class ScatterPlot(BaseComponent):
             plot_width=self.width_slider,
             plot_height=self.height_slider,
             font_size=self.font_size_slider,
+            size_range=self.size_range_slider,
+            size_gamma=self.size_gamma_slider,
         )
 
         # Side-by-side layout: controls on left, plot on right
