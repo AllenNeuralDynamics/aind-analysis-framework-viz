@@ -24,6 +24,7 @@ from components import (
     StatsPanel,
     get_s3_image_url,
 )
+import __init__ as app_init
 from config import (
     PROJECT_REGISTRY,
     AppConfig,
@@ -364,6 +365,11 @@ class AINDAnalysisFrameworkApp(BaseApp):
 
     def create_sidebar(self) -> pn.Column:
         """Create sidebar content using extracted components."""
+        credits = pn.pane.Markdown(
+            f"---\n\n**Built by** Han Hou & Claude Code  \n**Version** {app_init.__version__}",
+            sizing_mode="stretch_width",
+        )
+
         return pn.Column(
             self.create_project_selector(),
             self._components["docdb_query"].create(),  # Collapsed by default, for custom queries
@@ -373,6 +379,8 @@ class AINDAnalysisFrameworkApp(BaseApp):
             self._components["filter_panel"].create(),
             pn.layout.Divider(),
             self._components["stats_panel"].create(),
+            pn.Spacer(height=20),
+            credits,
             sizing_mode="stretch_width",
         )
 
