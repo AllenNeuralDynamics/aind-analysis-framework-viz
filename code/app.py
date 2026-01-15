@@ -20,7 +20,6 @@ from components import (
     DataTable,
     DocDBQueryPanel,
     FilterPanel,
-    LoadDataPanel,
     StatsPanel,
     get_s3_image_url,
 )
@@ -47,12 +46,14 @@ class AINDAnalysisFrameworkApp(BaseApp):
     - URL state synchronization helpers
 
     This app adds:
-    - Project selection via dropdown
-    - Deferred data loading (load on demand)
+    - Project selection via dropdown (auto-loads data on selection)
     - Data loading from MongoDB via aind-analysis-arch-result-access
     - Tabulator display with filtering
     - Asset viewing from S3
     """
+
+    # Placeholder value for project selector
+    _PROJECT_PLACEHOLDER = "-- Select a project --"
 
     # Current project configuration
     current_config = param.ClassSelector(class_=AppConfig, default=None, doc="Current project config")
@@ -68,19 +69,20 @@ class AINDAnalysisFrameworkApp(BaseApp):
         # BaseApp initializes: self.data_holder, self.df_full, self._components
         self.asset_viewer: AssetViewer = None
 
-        # Project selector widget
+        # Project selector widget with placeholder
         self.project_selector = pn.widgets.Select(
             name="Select Project",
-            options=list(PROJECT_REGISTRY.keys()),
-            value="Dynamic Foraging Model Fitting",
+            options=[self._PROJECT_PLACEHOLDER] + list(PROJECT_REGISTRY.keys()),
+            value=self._PROJECT_PLACEHOLDER,
             sizing_mode="stretch_width",
         )
 
         # Watch for project changes
         self.project_selector.param.watch(self._on_project_change, "value")
 
-        # Initialize with default project config (but don't load data yet)
-        self.current_config = PROJECT_REGISTRY[self.project_selector.value][1]
+        # Initialize with first project config (for components), but don't load data
+        first_project = list(PROJECT_REGISTRY.keys())[0]
+        self.current_config = PROJECT_REGISTRY[first_project][1]
         self._init_components()
 
     def _init_components(self):
@@ -110,22 +112,31 @@ class AINDAnalysisFrameworkApp(BaseApp):
             load_data_callback=self.load_data,
             get_default_query=self._get_default_query,
         )
-        self._components["load_panel"] = LoadDataPanel(
-            self.data_holder,
-            self.current_config,
-            load_data_callback=self.load_data,
-        )
         self._components["stats_panel"] = StatsPanel(self.data_holder, self.current_config)
 
     def _on_project_change(self, event):
-        """Handle project selection change."""
+        """Handle project selection change - loads data immediately."""
         project_name = event.new
+
+        # Handle placeholder selection
+        if project_name == self._PROJECT_PLACEHOLDER:
+            self.data_holder.filtered_df = pd.DataFrame()
+            self.data_holder.selected_record_ids = []
+            self.data_holder.additional_columns = []
+            self.data_holder.is_loaded = False
+            self.data_holder.load_status = ""
+            self.df_full = None
+            return
+
         if project_name in PROJECT_REGISTRY:
+            # Check if this is initial load (from URL) or user switching projects
+            is_initial_load = self.df_full is None
+
             _, config = PROJECT_REGISTRY[project_name]
             self.current_config = config
             self._init_components()
 
-            # Reset data state when project changes
+            # Reset data state before loading
             self.data_holder.filtered_df = pd.DataFrame()
             self.data_holder.selected_record_ids = []
             self.data_holder.additional_columns = []
@@ -134,6 +145,17 @@ class AINDAnalysisFrameworkApp(BaseApp):
             self.df_full = None
 
             logger.info(f"Project changed to: {project_name}")
+
+            # Load data immediately
+            self.load_data()
+
+            # On initial load from URL, apply filter if present (preserve selection)
+            if is_initial_load and self.data_holder.is_loaded:
+                filter_panel = self._components.get("filter_panel")
+                if filter_panel and hasattr(filter_panel, "filter_query_widget"):
+                    filter_value = filter_panel.filter_query_widget.value
+                    if filter_value:
+                        self.apply_global_filter(filter_value, clear_selection=False)
 
     def _get_default_query(self) -> dict:
         """Get default DocDB query for recent data."""
@@ -228,7 +250,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
         return pn.Column(
             pn.pane.Markdown("### Project Selection"),
             self.project_selector,
-            pn.pane.Markdown("*Select a project, optionally edit the DocDB query below, then click Load Data*"),
+            pn.pane.Markdown("*Select a project to load data automatically*"),
             sizing_mode="stretch_width",
         )
 
@@ -238,7 +260,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
         <div style="text-align: center; padding: 50px 20px;">
             <h2>Welcome to AIND Analysis Framework Explorer</h2>
             <p style="font-size: 1.1em; color: #666;">
-                Select a project from the sidebar and click <strong>Load Data</strong> to begin exploring.
+                Select a project from the sidebar to begin exploring.
             </p>
             <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
                 <h3 style="margin-top: 0;">Available Projects:</h3>
@@ -301,8 +323,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
         """Create sidebar content using extracted components."""
         return pn.Column(
             self.create_project_selector(),
-            self._components["docdb_query"].create(),
-            self._components["load_panel"].create(),
+            self._components["docdb_query"].create(),  # Collapsed by default, for custom queries
             pn.layout.Divider(),
             self._components["column_selector"].create(),
             pn.layout.Divider(),
@@ -337,32 +358,9 @@ class AINDAnalysisFrameworkApp(BaseApp):
         template.sidebar.append(sidebar_content)
         template.main.append(main_content)
 
-        # Capture original URL params BEFORE sync (sync may add default values)
-        from urllib.parse import parse_qs
-
-        original_search = pn.state.location.search or ""
-        if original_search.startswith("?"):
-            original_search = original_search[1:]
-        original_params = parse_qs(original_search)
-
         # Sync URL state after layout is created
+        # Note: URL sync triggers _on_project_change which handles loading + filter
         self._sync_url_state()
-
-        # Auto-load data and apply filter if specified in original URL
-        def _auto_load():
-            # Use original_params captured before sync
-            if original_params.get("project") and self.project_selector.value in PROJECT_REGISTRY:
-                self.load_data()
-                # Apply filter if present in URL (preserve selection from URL)
-                if original_params.get("filter"):
-                    filter_panel = self._components.get("filter_panel")
-                    if filter_panel and filter_panel.filter_query_widget.value:
-                        self.apply_global_filter(
-                            filter_panel.filter_query_widget.value,
-                            clear_selection=False,
-                        )
-
-        pn.state.onload(_auto_load)
 
         return template
 
