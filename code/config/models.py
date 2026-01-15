@@ -168,12 +168,25 @@ class ScatterPlotConfig:
     # Available color palettes
     color_palettes: list[str] = field(
         default_factory=lambda: [
+            # Categorical
             "Category10",
             "Category20",
+            "Category20b",
+            "Category20c",
+            "Set3",
+            # Continuous (256)
             "Viridis256",
             "Plasma256",
             "Magma256",
+            "Inferno256",
+            "Cividis256",
             "Turbo256",
+            "Greys256",
+            "Blues256",
+            "Greens256",
+            "Oranges256",
+            "Reds256",
+            "Purples256",
         ]
     )
 

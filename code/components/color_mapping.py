@@ -15,9 +15,16 @@ from bokeh.models import (
 from bokeh.palettes import (
     Category10,
     Category20,
+    Blues256,
     Cividis256,
+    Greens256,
+    Greys256,
+    Inferno256,
     Magma256,
+    Oranges256,
     Plasma256,
+    Purples256,
+    Reds256,
     Turbo256,
     Viridis256,
     all_palettes,
@@ -37,8 +44,15 @@ NAMED_PALETTES = {
     "Viridis256": Viridis256,
     "Plasma256": Plasma256,
     "Magma256": Magma256,
+    "Inferno256": Inferno256,
     "Turbo256": Turbo256,
     "Cividis256": Cividis256,
+    "Greys256": Greys256,
+    "Blues256": Blues256,
+    "Greens256": Greens256,
+    "Oranges256": Oranges256,
+    "Reds256": Reds256,
+    "Purples256": Purples256,
 }
 
 
