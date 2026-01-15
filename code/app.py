@@ -21,22 +21,13 @@ from config import (
     PROJECT_REGISTRY,
     AppConfig,
 )
+from core.base_app import DataHolder
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize Panel extensions
 pn.extension("tabulator")
-
-
-class DataHolder(param.Parameterized):
-    """Central state container for reactive updates."""
-
-    selected_record_ids = param.List(default=[], doc="List of currently selected record IDs")
-    filtered_df = param.DataFrame(default=pd.DataFrame(), doc="Filtered DataFrame")
-    is_loaded = param.Boolean(default=False, doc="Whether data has been loaded")
-    load_status = param.String(default="", doc="Status message from data loading")
-    additional_columns = param.List(default=[], doc="Additional columns to display beyond defaults")
 
 
 class AINDAnalysisFrameworkApp(param.Parameterized):

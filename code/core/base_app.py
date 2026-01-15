@@ -27,12 +27,18 @@ class DataHolder(param.Parameterized):
     synchronized state.
 
     Attributes:
-        selected_record_id: Currently selected record identifier
+        selected_record_ids: List of currently selected record IDs
         filtered_df: The filtered DataFrame after applying global filters
+        is_loaded: Whether data has been loaded
+        load_status: Status message from data loading
+        additional_columns: Additional columns to display beyond defaults
     """
 
-    selected_record_id = param.String(default="", doc="Currently selected record ID")
-    filtered_df = param.DataFrame(doc="Filtered DataFrame for display")
+    selected_record_ids = param.List(default=[], doc="List of currently selected record IDs")
+    filtered_df = param.DataFrame(default=pd.DataFrame(), doc="Filtered DataFrame for display")
+    is_loaded = param.Boolean(default=False, doc="Whether data has been loaded")
+    load_status = param.String(default="", doc="Status message from data loading")
+    additional_columns = param.List(default=[], doc="Additional columns to display beyond defaults")
 
 
 class BaseApp(param.Parameterized):
@@ -215,13 +221,13 @@ class BaseApp(param.Parameterized):
             List of Panel objects for sidebar
         """
         return [
-            pn.pane.Markdown("### Selected Record"),
+            pn.pane.Markdown("### Selected Records"),
             pn.bind(
-                lambda id: pn.pane.Markdown(
-                    f"**ID:** {id}" if id else "No record selected",
+                lambda ids: pn.pane.Markdown(
+                    f"**Count:** {len(ids)}" if ids else "No records selected",
                     css_classes=["alert", "alert-secondary", "p-2"],
                 ),
-                id=self.data_holder.param.selected_record_id,
+                ids=self.data_holder.param.selected_record_ids,
             ),
             pn.pane.Markdown("### Record Count"),
             pn.bind(
