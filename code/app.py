@@ -183,15 +183,22 @@ class AINDAnalysisFrameworkApp(BaseApp):
             self.data_holder.load_status = f"Error: {e}"
             return f"Error: {e}"
 
-    def apply_global_filter(self, query_string: str) -> str:
-        """Apply pandas query filter to the data."""
+    def apply_global_filter(self, query_string: str, clear_selection: bool = True) -> str:
+        """Apply pandas query filter to the data.
+
+        Args:
+            query_string: Pandas query string to filter data
+            clear_selection: If True, clears selected rows. Set to False when
+                restoring state from URL to preserve selection.
+        """
         if not self.data_holder.is_loaded or self.df_full is None or self.df_full.empty:
             return "No data loaded"
 
         if not query_string.strip():
             self.data_holder.filtered_df = self.df_full.copy()
-            self.data_holder.selected_record_ids = []  # Clear selection on reset
-            self._clear_table_selection()  # Clear table widget selection
+            if clear_selection:
+                self.data_holder.selected_record_ids = []
+                self._clear_table_selection()
             return f"Reset to full dataset (N={len(self.df_full)})"
 
         try:
@@ -201,8 +208,9 @@ class AINDAnalysisFrameworkApp(BaseApp):
                 return "Query returned 0 results. Filter not applied."
 
             self.data_holder.filtered_df = filtered.copy()
-            self.data_holder.selected_record_ids = []  # Clear selection on filter
-            self._clear_table_selection()  # Clear table widget selection
+            if clear_selection:
+                self.data_holder.selected_record_ids = []
+                self._clear_table_selection()
             return f"Showing {len(filtered)} of {len(self.df_full)} records"
         except Exception as e:
             logger.error(f"Query error: {e}")
@@ -331,6 +339,30 @@ class AINDAnalysisFrameworkApp(BaseApp):
 
         # Sync URL state after layout is created
         self._sync_url_state()
+
+        # Auto-load data and apply filter if specified in URL
+        def _auto_load():
+            from urllib.parse import parse_qs, urlparse
+
+            # Parse URL query parameters
+            query_string = pn.state.location.search or ""
+            if query_string.startswith("?"):
+                query_string = query_string[1:]
+            params = parse_qs(query_string)
+
+            # Auto-load if project is explicitly in URL
+            if params.get("project") and self.project_selector.value in PROJECT_REGISTRY:
+                self.load_data()
+                # Apply filter if present in URL (preserve selection from URL)
+                if params.get("filter"):
+                    filter_panel = self._components.get("filter_panel")
+                    if filter_panel and filter_panel.filter_query_widget.value:
+                        self.apply_global_filter(
+                            filter_panel.filter_query_widget.value,
+                            clear_selection=False,
+                        )
+
+        pn.state.onload(_auto_load)
 
         return template
 
