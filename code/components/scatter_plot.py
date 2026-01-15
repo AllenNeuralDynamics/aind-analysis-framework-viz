@@ -179,14 +179,14 @@ class ScatterPlot(BaseComponent):
             'border: 1px solid #ccc; border-radius: 4px;">',
             f'<div style="font-weight: bold; margin-bottom: 5px;">@{{{id_col}}}</div>',
             '<div style="font-size: 12px; color: #666;">',
-            "X: @{x_col}{0.000} | Y: @{y_col}{0.000}",
+            "X: @x{0.000} | Y: @y{0.000}",
             "</div>",
         ]
 
         # Add color/size info if set
         tooltip_parts.append(
             '<div style="font-size: 12px; color: #666; margin-top: 3px;">'
-            "Color: @{color_col} | Size: @{size_col}"
+            "Color: @color_col | Size: @size_col"
             "</div>"
         )
 
