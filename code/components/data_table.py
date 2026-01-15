@@ -9,15 +9,16 @@ Provides a configurable table display with:
 """
 
 import logging
-from typing import Any, Callable, List, Optional
+from typing import Callable, List, Optional
 
 import pandas as pd
 import panel as pn
+import param
 
 logger = logging.getLogger(__name__)
 
 
-class DataTable:
+class DataTable(param.Parameterized):
     """
     Wrapper around Panel Tabulator for displaying DataFrames.
 
@@ -28,6 +29,9 @@ class DataTable:
     - Optional grouping
     """
 
+    # Additional columns to display beyond defaults
+    additional_columns = param.List(default=[], doc="Additional columns selected by user")
+
     def __init__(
         self,
         df: pd.DataFrame,
@@ -37,21 +41,23 @@ class DataTable:
         on_selection: Optional[Callable[[List[str]], None]] = None,
         id_column: str = "_id",
         height: int = 400,
+        **params,
     ):
         """
         Initialize the data table.
 
         Args:
             df: DataFrame to display
-            display_columns: Columns to show (default: all)
+            display_columns: Default columns to show
             frozen_columns: Columns to freeze on left
             groupby: Columns to group by
             on_selection: Callback when rows are selected, receives list of record IDs
             id_column: Column name for record identifier
             height: Table height in pixels
         """
+        super().__init__(**params)
         self.df = df
-        self.display_columns = display_columns or list(df.columns)
+        self.default_display_columns = display_columns or list(df.columns)
         self.frozen_columns = frozen_columns or []
         self.groupby = groupby or []
         self.on_selection = on_selection
@@ -59,6 +65,12 @@ class DataTable:
         self.height = height
 
         self._tabulator: Optional[pn.widgets.Tabulator] = None
+
+    def get_display_columns(self) -> List[str]:
+        """Get combined default and additional columns that exist in df."""
+        cols = [c for c in self.default_display_columns if c in self.df.columns]
+        additional = [c for c in self.additional_columns if c in self.df.columns and c not in cols]
+        return cols + additional
 
     def create_table(self, df: Optional[pd.DataFrame] = None) -> pn.widgets.Tabulator:
         """
@@ -72,8 +84,8 @@ class DataTable:
         """
         data = df if df is not None else self.df
 
-        # Filter to display columns that exist
-        cols_to_show = [c for c in self.display_columns if c in data.columns]
+        # Get display columns (defaults + additional)
+        cols_to_show = self.get_display_columns()
         display_df = data[cols_to_show] if cols_to_show else data
 
         self._tabulator = pn.widgets.Tabulator(
@@ -111,32 +123,50 @@ class DataTable:
 
     def create_column_selector(
         self,
-        all_columns: Optional[List[str]] = None,
-        default_extra: Optional[List[str]] = None,
-        height: int = 200,
-        width: int = 300,
-    ) -> pn.widgets.MultiSelect:
+        height: int = 150,
+    ) -> pn.Column:
         """
-        Create a widget for selecting additional columns to display.
+        Create a widget panel for selecting additional columns to display.
 
         Args:
-            all_columns: All available columns
-            default_extra: Default extra columns to show
-            height: Selector height
-            width: Selector width
+            height: Selector height in pixels
 
         Returns:
-            MultiSelect widget for column selection
+            Panel with MultiSelect widget and status message
         """
-        available = all_columns or list(self.df.columns)
-        selectable = [c for c in available if c not in self.display_columns]
+        # Get available columns (excluding defaults)
+        default_cols = set(self.default_display_columns)
+        available_cols = sorted(
+            [col for col in self.df.columns if col not in default_cols],
+            key=str.lower,
+        )
 
-        return pn.widgets.MultiSelect(
-            name="Additional columns",
-            options=sorted(selectable),
-            value=default_extra or [],
-            height=height,
-            width=width,
+        # Status message
+        if available_cols:
+            status_msg = f"*{len(available_cols)} additional columns available*"
+        else:
+            status_msg = "*Load data to see available columns*"
+
+        # Create multi-select widget
+        column_selector = pn.widgets.MultiSelect(
+            name="Additional Columns",
+            options=available_cols,
+            value=self.additional_columns,
+            size=min(8, len(available_cols)) if available_cols else 8,
+            sizing_mode="stretch_width",
+        )
+
+        # Update additional_columns when selection changes
+        def on_column_change(event):
+            self.additional_columns = list(event.new)
+
+        column_selector.param.watch(on_column_change, "value")
+
+        return pn.Column(
+            pn.pane.Markdown("### Additional Columns"),
+            pn.pane.Markdown(status_msg),
+            column_selector,
+            sizing_mode="stretch_width",
         )
 
 

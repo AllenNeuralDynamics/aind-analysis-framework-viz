@@ -43,6 +43,7 @@ class DataHolder(param.Parameterized):
     filtered_df = param.DataFrame(default=pd.DataFrame(), doc="Filtered DataFrame")
     is_loaded = param.Boolean(default=False, doc="Whether data has been loaded")
     load_status = param.String(default="", doc="Status message from data loading")
+    additional_columns = param.List(default=[], doc="Additional columns to display beyond defaults")
 
 
 class AINDAnalysisFrameworkApp(param.Parameterized):
@@ -108,6 +109,7 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
             # Reset data state when project changes
             self.data_holder.filtered_df = pd.DataFrame()
             self.data_holder.selected_record_ids = []
+            self.data_holder.additional_columns = []
             self.data_holder.is_loaded = False
             self.data_holder.load_status = ""
             self.df_full = None
@@ -277,13 +279,21 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
             sizing_mode="stretch_width",
         )
 
-    def create_data_table(self, df: pd.DataFrame) -> pn.widgets.Tabulator:
+    def create_data_table(self, df: pd.DataFrame, additional_cols: list = None) -> pn.widgets.Tabulator:
         """Create the main data table."""
         if df is None or df.empty:
             return pn.pane.Markdown("No data available")
 
-        # Get display columns that exist in the dataframe
-        display_cols = [c for c in self._get_display_columns() if c in df.columns]
+        # Get default display columns that exist in the dataframe
+        default_cols = [c for c in self._get_display_columns() if c in df.columns]
+
+        # Get additional columns that exist in the dataframe
+        if additional_cols is None:
+            additional_cols = self.data_holder.additional_columns
+        additional_cols = [c for c in additional_cols if c in df.columns]
+
+        # Combine default and additional columns
+        display_cols = default_cols + additional_cols
 
         table = pn.widgets.Tabulator(
             df[display_cols],
@@ -314,6 +324,45 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
         table.param.watch(on_selection, "selection")
 
         return table
+
+    def create_column_selector(self, df: pd.DataFrame) -> pn.Column:
+        """Create a column selector for additional columns."""
+        # Get default columns
+        default_cols = set(self._get_display_columns())
+
+        # Get available columns (excluding defaults), sorted case-insensitively
+        if df is not None and not df.empty:
+            available_cols = sorted([col for col in df.columns if col not in default_cols], key=str.lower)
+        else:
+            available_cols = []
+
+        # Create multi-select widget
+        column_selector = pn.widgets.MultiSelect(
+            name="Additional Columns",
+            options=available_cols,
+            value=[],
+            size=8,
+            sizing_mode="stretch_width",
+        )
+
+        # Update data_holder when selection changes
+        def on_column_change(event):
+            self.data_holder.additional_columns = list(event.new)
+
+        column_selector.param.watch(on_column_change, "value")
+
+        # Status message
+        if available_cols:
+            status_msg = f"*{len(available_cols)} additional columns available*"
+        else:
+            status_msg = "*Load data to see available columns*"
+
+        return pn.Column(
+            pn.pane.Markdown("### Additional Columns"),
+            pn.pane.Markdown(status_msg),
+            column_selector,
+            sizing_mode="stretch_width",
+        )
 
     def create_welcome_content(self) -> pn.Column:
         """Create the welcome/placeholder content shown before data is loaded."""
@@ -353,6 +402,7 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
             table = pn.bind(
                 self.create_data_table,
                 df=self.data_holder.param.filtered_df,
+                additional_cols=self.data_holder.param.additional_columns,
             )
 
             asset_display = self.asset_viewer.create_viewer(
@@ -449,10 +499,18 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
 
     def create_sidebar(self) -> pn.Column:
         """Create sidebar content."""
+        # Column selector - always visible, updates reactively
+        column_selector = pn.bind(
+            self.create_column_selector,
+            df=self.data_holder.param.filtered_df,
+        )
+
         return pn.Column(
             self.create_project_selector(),
             self.create_docdb_query_panel(),
             self.create_load_data_panel(),
+            pn.layout.Divider(),
+            column_selector,
             pn.layout.Divider(),
             self.create_filter_panel(),
             pn.layout.Divider(),
