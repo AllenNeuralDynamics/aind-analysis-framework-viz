@@ -21,7 +21,7 @@ from config import (
     PROJECT_REGISTRY,
     AppConfig,
 )
-from core.base_app import DataHolder
+from core.base_app import BaseApp, DataHolder
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,17 +30,21 @@ logger = logging.getLogger(__name__)
 pn.extension("tabulator")
 
 
-class AINDAnalysisFrameworkApp(param.Parameterized):
+class AINDAnalysisFrameworkApp(BaseApp):
     """
     Panel app for exploring AIND analysis results.
 
-    This app demonstrates:
+    Inherits from BaseApp to get:
+    - DataHolder for reactive state management
+    - Global filtering with pandas query
+    - URL state synchronization helpers
+
+    This app adds:
     - Project selection via dropdown
     - Deferred data loading (load on demand)
     - Data loading from MongoDB via aind-analysis-arch-result-access
     - Tabulator display with filtering
     - Asset viewing from S3
-    - Reactive state management
     """
 
     # Current project configuration
@@ -54,8 +58,7 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
             **params: Optional parameters
         """
         super().__init__(**params)
-        self.data_holder = DataHolder()
-        self.df_full: pd.DataFrame = None
+        # BaseApp initializes: self.data_holder, self.df_full, self._components
         self.asset_viewer: AssetViewer = None
 
         # Project selector widget
