@@ -20,6 +20,7 @@ from components import (
     DataTable,
     DocDBQueryPanel,
     FilterPanel,
+    ScatterPlot,
     StatsPanel,
     get_s3_image_url,
 )
@@ -114,6 +115,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
             get_default_query=self._get_default_query,
         )
         self._components["stats_panel"] = StatsPanel(self.data_holder, self.current_config)
+        self._components["scatter_plot"] = ScatterPlot(self.data_holder, self.current_config)
 
     def _on_project_change(self, event):
         """Handle project selection change - loads data immediately."""
@@ -319,8 +321,9 @@ class AINDAnalysisFrameworkApp(BaseApp):
             if not is_loaded:
                 return self.create_welcome_content()
 
-            # Data is loaded - show table and assets
+            # Data is loaded - show table, scatter plot, and assets
             table = self._components["data_table"].create()
+            scatter_plot = self._components["scatter_plot"].create()
 
             asset_display = self.asset_viewer.create_viewer(
                 record_ids_param=self.data_holder.param.selected_record_ids,
@@ -336,11 +339,21 @@ class AINDAnalysisFrameworkApp(BaseApp):
                 df=self.data_holder.param.filtered_df,
             )
 
+            # Create tabs for different views
+            tabs = pn.Tabs(
+                ("Data Table", pn.Column(
+                    pn.pane.Markdown("*Click rows to select, or hold Ctrl/Cmd and click for multiple selections*"),
+                    table,
+                    sizing_mode="stretch_width",
+                )),
+                ("Scatter Plot", scatter_plot),
+                sizing_mode="stretch_width",
+            )
+            pn.state.location.sync(tabs, {"active": "tab"})
+
             return pn.Column(
                 count_display,
-                pn.pane.Markdown("### Records"),
-                pn.pane.Markdown("*Click rows to select, or hold Ctrl/Cmd and click for multiple selections*"),
-                table,
+                tabs,
                 pn.layout.Divider(),
                 pn.pane.Markdown("### Selected Record Assets"),
                 asset_display,
