@@ -1,5 +1,5 @@
 ---
-title: Aind Analysis Framework Viz
+title: AIND Analysis Framework Viz
 emoji: 📈
 colorFrom: gray
 colorTo: green

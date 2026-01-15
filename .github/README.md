@@ -6,11 +6,11 @@ A generic, reusable Panel app for exploring AIND (Allen Institute for Neural Dyn
 
 ## Features
 
-- **Multi-project support** - Switch between different AIND projects via dropdown 🔄
-- **Interactive data table** - Filter, sort, and select records with Tabulator 📊
-- **Asset viewer** - Display PNG figures from S3 based on selected records 🖼️
-- **URL state sync** - Shareable links that preserve filters, selections, and view state 🔗
-- **Modular architecture** - Easy to extend for new projects via configuration 🧩
+- 🔄 **Multi-project support** - Switch between different AIND projects via dropdown
+- 📊 **Interactive data table** - Filter, sort, and select records with Tabulator
+- 🖼️ **Asset viewer** - Display PNG figures from S3 based on selected records
+- 🔗 **URL state sync** - Shareable links that preserve filters, selections, and view state
+- 🧩 **Modular architecture** - Easy to extend for new projects via configuration
 
 ## Environment Setup
 
