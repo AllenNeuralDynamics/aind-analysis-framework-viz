@@ -316,50 +316,48 @@ class AINDAnalysisFrameworkApp(BaseApp):
 
     def create_main_content(self) -> pn.viewable.Viewable:
         """Create the main content area."""
-        # Create components once (they handle their own reactivity via pn.bind internally)
-        table = self._components["data_table"].create()
-        scatter_plot = self._components["scatter_plot"].create()
-
-        asset_display = self.asset_viewer.create_viewer(
-            record_ids_param=self.data_holder.param.selected_record_ids,
-            df_param=self.data_holder.param.filtered_df,
-            id_column=self.current_config.id_column,
-        )
-
-        count_display = pn.bind(
-            lambda df: pn.pane.Markdown(
-                f"**Showing {len(df) if df is not None else 0} records**",
-                css_classes=["alert", "alert-success", "p-2"],
-            ),
-            df=self.data_holder.param.filtered_df,
-        )
-
-        # Create tabs for different views
-        tabs = pn.Tabs(
-            ("Data Table", pn.Column(
-                pn.pane.Markdown("*Click rows to select, or hold Ctrl/Cmd and click for multiple selections*"),
-                table,
-                sizing_mode="stretch_width",
-            )),
-            ("Scatter Plot", scatter_plot),
-            sizing_mode="stretch_width",
-        )
-
-        data_content = pn.Column(
-            count_display,
-            tabs,
-            pn.layout.Divider(),
-            pn.pane.Markdown("### Selected Record Assets"),
-            asset_display,
-            sizing_mode="stretch_width",
-        )
-
-        # Show welcome or data content based on load status
         def render_content(is_loaded):
             """Render content based on whether data is loaded."""
             if not is_loaded:
                 return self.create_welcome_content()
-            return data_content
+
+            # Data is loaded - show table, scatter plot, and assets
+            table = self._components["data_table"].create()
+            scatter_plot = self._components["scatter_plot"].create()
+
+            asset_display = self.asset_viewer.create_viewer(
+                record_ids_param=self.data_holder.param.selected_record_ids,
+                df_param=self.data_holder.param.filtered_df,
+                id_column=self.current_config.id_column,
+            )
+
+            count_display = pn.bind(
+                lambda df: pn.pane.Markdown(
+                    f"**Showing {len(df) if df is not None else 0} records**",
+                    css_classes=["alert", "alert-success", "p-2"],
+                ),
+                df=self.data_holder.param.filtered_df,
+            )
+
+            # Create tabs for different views
+            tabs = pn.Tabs(
+                ("Data Table", pn.Column(
+                    pn.pane.Markdown("*Click rows to select, or hold Ctrl/Cmd and click for multiple selections*"),
+                    table,
+                    sizing_mode="stretch_width",
+                )),
+                ("Scatter Plot", scatter_plot),
+                sizing_mode="stretch_width",
+            )
+
+            return pn.Column(
+                count_display,
+                tabs,
+                pn.layout.Divider(),
+                pn.pane.Markdown("### Selected Record Assets"),
+                asset_display,
+                sizing_mode="stretch_width",
+            )
 
         return pn.bind(render_content, is_loaded=self.data_holder.param.is_loaded)
 
