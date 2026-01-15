@@ -365,10 +365,29 @@ class AINDAnalysisFrameworkApp(BaseApp):
     def _sync_url_state(self):
         """Sync project selector to URL.
 
+        Uses manual handling to avoid bidirectional sync issues.
         Note: FilterPanel, ColumnSelector, and DataTable sync their own
         params (filter, cols, selected) in their create() methods.
         """
-        pn.state.location.sync(self.project_selector, {"value": "project"})
+        from urllib.parse import parse_qs
+
+        location = pn.state.location
+
+        # Read project from URL on initial load
+        query_string = location.search or ""
+        if query_string.startswith("?"):
+            query_string = query_string[1:]
+        params = parse_qs(query_string)
+        url_project = params.get("project", [None])[0]
+        if url_project and url_project in PROJECT_REGISTRY:
+            self.project_selector.value = url_project
+
+        # One-way sync: widget → URL only (no URL → widget after initial load)
+        def on_project_select(event):
+            if event.new and event.new != self._PROJECT_PLACEHOLDER:
+                location.update_query(project=event.new)
+
+        self.project_selector.param.watch(on_project_select, "value")
 
     def main_layout(self) -> pn.template.GoldenTemplate:
         """Construct the full application layout."""
