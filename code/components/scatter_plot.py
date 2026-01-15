@@ -15,7 +15,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 import panel as pn
-from bokeh.models import ColumnDataSource, HoverTool, TapTool
+from bokeh.models import (
+    ColumnDataSource,
+    HoverTool,
+    LinearColorMapper,
+    TapTool,
+)
 from bokeh.plotting import figure
 
 from .base import BaseComponent
@@ -248,7 +253,7 @@ class ScatterPlot(BaseComponent):
             color_column,
             palette,
             scatter_config.max_categorical_values,
-        )
+        )  # Now uses intelligent palette selection from all_palettes
 
         # Determine size mapping
         size_column = size_col if size_col != "None" else None
@@ -284,7 +289,12 @@ class ScatterPlot(BaseComponent):
 
         # Add color column data if categorical
         if color_column and color_column in df_valid.columns:
-            source_data[color_column] = df_valid[color_column].astype(str).values
+            if isinstance(color_mapper, LinearColorMapper):
+                source_data[color_column] = pd.to_numeric(
+                    df_valid[color_column], errors="coerce"
+                ).values
+            else:
+                source_data[color_column] = df_valid[color_column].astype(str).values
 
         # Add tooltip image URL if configured
         if scatter_config.tooltip_image_column:
@@ -354,7 +364,7 @@ class ScatterPlot(BaseComponent):
 
         # Add color bar for continuous mappings
         if color_column:
-            add_color_bar(p, color_mapper, color_column)
+            add_color_bar(p, color_mapper, color_column, font_size=12)
 
         # Style the plot
         p.title.text_font_size = "14pt"
