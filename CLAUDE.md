@@ -120,3 +120,7 @@ See `.claude/skills/panel-architecture.md` for:
 3. **Separation**: Separate data loading (backend) from visualization (frontend)
 4. **Reusability**: Components should work with different DataFrames via configuration
 5. **Skills First**: Document stable patterns in skills for future sessions
+
+## Documentation Conventions
+
+- Root `README.md` is for Hugging Face Space metadata and should link to `.github/README.md` for details
