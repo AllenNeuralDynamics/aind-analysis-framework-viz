@@ -291,6 +291,17 @@ class AINDAnalysisFrameworkApp(BaseApp):
             sizing_mode="stretch_width",
         )
 
+    def _sync_url_state(self):
+        """Centralize URL sync logic for the app.
+
+        Syncs widgets to URL parameters for shareable links.
+        Follows the two-way sync pattern from LCNE-patchseq-viz.
+        """
+        location = pn.state.location
+
+        # Sync project selector to URL
+        location.sync(self.project_selector, {'value': 'project'})
+
     def main_layout(self) -> pn.template.GoldenTemplate:
         """Construct the full application layout."""
         main_content = self.create_main_content()
@@ -301,6 +312,9 @@ class AINDAnalysisFrameworkApp(BaseApp):
         # Add content to the template
         template.sidebar.append(sidebar_content)
         template.main.append(main_content)
+
+        # Sync URL state after layout is created
+        self._sync_url_state()
 
         return template
 
