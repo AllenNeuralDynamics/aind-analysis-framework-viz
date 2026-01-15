@@ -111,43 +111,64 @@ class ScatterPlot(BaseComponent):
         return df.columns.tolist()
 
     def _update_column_options(self, df: pd.DataFrame) -> None:
-        """Update dropdown options based on available columns."""
+        """Update dropdown options based on available columns.
+
+        Only sets default values when:
+        - Options are being set for the first time (were empty)
+        - Current value is no longer valid for new options
+        """
         if df is None or df.empty:
             return
 
         numeric_cols = self._get_numeric_columns(df)
         all_cols = self._get_all_columns(df)
+        scatter_config = self.config.scatter_plot
 
-        # Update X/Y selectors with numeric columns
+        # Track if this is initial setup (options were empty)
+        x_was_empty = not self.x_select.options
+        y_was_empty = not self.y_select.options
+        color_was_empty = len(self.color_select.options) <= 1  # Only has "None"
+        size_was_empty = len(self.size_select.options) <= 1
+
+        # Update options
         self.x_select.options = numeric_cols
         self.y_select.options = numeric_cols
-
-        # Update Color/Size with all columns (plus "None" option)
         self.color_select.options = ["None"] + all_cols
         self.size_select.options = ["None"] + numeric_cols
 
-        # Set defaults from config if available
-        scatter_config = self.config.scatter_plot
+        # Set X axis default only if needed
+        if x_was_empty or self.x_select.value not in numeric_cols:
+            if scatter_config.x_column and scatter_config.x_column in numeric_cols:
+                self.x_select.value = scatter_config.x_column
+            elif numeric_cols:
+                self.x_select.value = numeric_cols[0]
 
-        if scatter_config.x_column and scatter_config.x_column in numeric_cols:
-            self.x_select.value = scatter_config.x_column
-        elif numeric_cols:
-            self.x_select.value = numeric_cols[0]
+        # Set Y axis default only if needed
+        if y_was_empty or self.y_select.value not in numeric_cols:
+            if scatter_config.y_column and scatter_config.y_column in numeric_cols:
+                self.y_select.value = scatter_config.y_column
+            elif len(numeric_cols) > 1:
+                self.y_select.value = numeric_cols[1]
+            elif numeric_cols:
+                self.y_select.value = numeric_cols[0]
 
-        if scatter_config.y_column and scatter_config.y_column in numeric_cols:
-            self.y_select.value = scatter_config.y_column
-        elif len(numeric_cols) > 1:
-            self.y_select.value = numeric_cols[1]
-        elif numeric_cols:
-            self.y_select.value = numeric_cols[0]
+        # Set Color default only if needed
+        color_options = ["None"] + all_cols
+        if color_was_empty or self.color_select.value not in color_options:
+            if scatter_config.color_column and scatter_config.color_column in all_cols:
+                self.color_select.value = scatter_config.color_column
+            else:
+                self.color_select.value = "None"
 
-        if scatter_config.color_column and scatter_config.color_column in all_cols:
-            self.color_select.value = scatter_config.color_column
+        # Set Size default only if needed
+        size_options = ["None"] + numeric_cols
+        if size_was_empty or self.size_select.value not in size_options:
+            if scatter_config.size_column and scatter_config.size_column in numeric_cols:
+                self.size_select.value = scatter_config.size_column
+            else:
+                self.size_select.value = "None"
 
-        if scatter_config.size_column and scatter_config.size_column in numeric_cols:
-            self.size_select.value = scatter_config.size_column
-
-    def _build_tooltip_html(self, df: pd.DataFrame) -> str:
+    def _build_tooltip_html(self) -> str:
         """Build HTML template for hover tooltip."""
         scatter_config = self.config.scatter_plot
         id_col = self.config.id_column
@@ -311,7 +332,7 @@ class ScatterPlot(BaseComponent):
 
         # Add hover tool
         hover = HoverTool(
-            tooltips=self._build_tooltip_html(df_valid),
+            tooltips=self._build_tooltip_html(),
             renderers=[scatter_renderer],
             attachment="right",
         )
@@ -322,7 +343,7 @@ class ScatterPlot(BaseComponent):
         p.add_tools(tap)
 
         # Selection callback
-        def on_tap_select(attr, old, new):
+        def on_tap_select(_attr, _old, new):
             if new:
                 selected_idx = new[0]
                 record_id = str(self._source.data[self.config.id_column][selected_idx])
@@ -375,15 +396,22 @@ class ScatterPlot(BaseComponent):
         Returns:
             Panel viewable with controls and reactive plot
         """
-        # Control panel
-        controls = pn.Row(
+        # Control sidebar - grouped logically
+        controls = pn.Column(
+            # Axis selection
             self.x_select,
             self.y_select,
+            pn.layout.Divider(),
+            # Color settings
             self.color_select,
-            self.size_select,
             self.palette_select,
+            pn.layout.Divider(),
+            # Size settings
+            self.size_select,
+            pn.layout.Divider(),
+            # Visual settings
             self.alpha_slider,
-            sizing_mode="stretch_width",
+            width=200,
         )
 
         # Reactive plot
@@ -398,9 +426,13 @@ class ScatterPlot(BaseComponent):
             alpha=self.alpha_slider,
         )
 
-        return pn.Column(
-            pn.pane.Markdown("### Scatter Plot"),
+        # Side-by-side layout: controls on left, plot on right
+        return pn.Row(
             controls,
-            plot,
+            pn.Column(
+                pn.pane.Markdown("### Scatter Plot"),
+                plot,
+                sizing_mode="stretch_width",
+            ),
             sizing_mode="stretch_width",
         )
