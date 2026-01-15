@@ -39,10 +39,11 @@ class FilterPanel(BaseComponent):
         """
         super().__init__(data_holder, config)
         self.apply_filter_callback = apply_filter_callback
+        self.filter_query_widget = None  # Exposed for URL sync
 
     def create(self) -> pn.Column:
         """Create the filter panel UI."""
-        filter_query = pn.widgets.TextAreaInput(
+        self.filter_query_widget = pn.widgets.TextAreaInput(
             name="Pandas Query",
             value="",
             placeholder=self.config.filter.default_placeholder if self.config else "",
@@ -63,11 +64,11 @@ class FilterPanel(BaseComponent):
         status = pn.pane.Markdown("", css_classes=["alert", "alert-info", "p-2"])
 
         def apply_callback(_event):
-            result = self.apply_filter_callback(filter_query.value)
+            result = self.apply_filter_callback(self.filter_query_widget.value)
             status.object = result
 
         def reset_callback(_event):
-            filter_query.value = ""
+            self.filter_query_widget.value = ""
             result = self.apply_filter_callback("")
             status.object = result
 
@@ -87,7 +88,7 @@ class FilterPanel(BaseComponent):
 
         return pn.Column(
             pn.pane.Markdown("### Global Filter"),
-            filter_query,
+            self.filter_query_widget,
             pn.Row(filter_button, reset_button),
             status,
             examples_card,

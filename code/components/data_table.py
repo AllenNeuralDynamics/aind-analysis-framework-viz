@@ -23,6 +23,11 @@ class DataTable(BaseComponent):
     when rows are selected.
     """
 
+    def __init__(self, data_holder: "DataHolder", config: "AppConfig"):
+        """Initialize the data table."""
+        super().__init__(data_holder, config)
+        self.table_widget = None  # Exposed for URL sync
+
     def create(self) -> pn.viewable.Viewable:
         """
         Create a reactive data table that updates when filtered_df changes.
@@ -69,7 +74,7 @@ class DataTable(BaseComponent):
         # Combine default and additional columns
         display_cols = default_cols + additional_cols
 
-        table = pn.widgets.Tabulator(
+        self.table_widget = pn.widgets.Tabulator(
             df[display_cols],
             selectable=self.config.data_table.selectable,
             disabled=self.config.data_table.disabled,
@@ -95,6 +100,12 @@ class DataTable(BaseComponent):
                 logger.info("No records selected")
                 self.data_holder.selected_record_ids = []
 
-        table.param.watch(on_selection, "selection")
+        self.table_widget.param.watch(on_selection, "selection")
 
-        return table
+        # Sync to URL (only once)
+        if not hasattr(self, '_url_sync_registered'):
+            location = pn.state.location
+            location.sync(self.table_widget, {'selection': 'selected'})
+            self._url_sync_registered = True
+
+        return self.table_widget

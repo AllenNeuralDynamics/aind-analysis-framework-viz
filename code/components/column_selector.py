@@ -23,6 +23,11 @@ class ColumnSelector(BaseComponent):
     and updates the DataHolder's additional_columns when selection changes.
     """
 
+    def __init__(self, data_holder: "DataHolder", config: "AppConfig"):
+        """Initialize the column selector."""
+        super().__init__(data_holder, config)
+        self.column_selector_widget = None  # Exposed for URL sync
+
     def create(self) -> pn.viewable.Viewable:
         """
         Create a reactive column selector that updates when filtered_df changes.
@@ -62,7 +67,7 @@ class ColumnSelector(BaseComponent):
             available_cols = []
 
         # Create multi-select widget
-        column_selector = pn.widgets.MultiSelect(
+        self.column_selector_widget = pn.widgets.MultiSelect(
             name="",
             options=available_cols,
             value=[],
@@ -74,7 +79,13 @@ class ColumnSelector(BaseComponent):
         def on_column_change(event):
             self.data_holder.additional_columns = list(event.new)
 
-        column_selector.param.watch(on_column_change, "value")
+        self.column_selector_widget.param.watch(on_column_change, "value")
+
+        # Sync to URL (only once)
+        if not hasattr(self, '_url_sync_registered'):
+            location = pn.state.location
+            location.sync(self.column_selector_widget, {'value': 'cols'})
+            self._url_sync_registered = True
 
         # Status message
         if available_cols:
@@ -84,7 +95,7 @@ class ColumnSelector(BaseComponent):
 
         return pn.Card(
             pn.pane.Markdown(status_msg),
-            column_selector,
+            self.column_selector_widget,
             title="Show additional Columns",
             collapsed=True,
             sizing_mode="stretch_width",
