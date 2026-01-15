@@ -89,13 +89,31 @@ class DynamicForagingDataLoader(DataLoader):
         """Load data using get_mle_model_fitting."""
         from aind_analysis_arch_result_access import get_mle_model_fitting
 
-        return get_mle_model_fitting(
+        df = get_mle_model_fitting(
             from_custom_query=query,
             if_include_metrics=self.include_metrics,
             if_include_latent_variables=self.include_latent_variables,
             if_download_figures=self.download_figures,
             paginate_settings=self.paginate_settings,
         )
+
+        # Flatten params column if it exists and contains dicts
+        if df is not None and "params" in df.columns:
+            df = self._flatten_params(df)
+
+        return df
+
+    def _flatten_params(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Flatten the params column into separate params.xxx columns."""
+        # Check if params contains dicts
+        if df["params"].apply(lambda x: isinstance(x, dict)).any():
+            # Extract params as a normalized dataframe
+            params_df = pd.json_normalize(df["params"].tolist(), sep=".")
+            # Prefix column names with "params."
+            params_df.columns = [f"params.{col}" for col in params_df.columns]
+            # Drop original params column and join flattened columns
+            df = df.drop(columns=["params"]).join(params_df)
+        return df
 
 
 class GenericDataLoader(DataLoader):

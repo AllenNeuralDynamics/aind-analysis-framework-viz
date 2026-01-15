@@ -63,10 +63,10 @@ class ColumnSelector(BaseComponent):
 
         # Create multi-select widget
         column_selector = pn.widgets.MultiSelect(
-            name="Additional Columns",
+            name="",
             options=available_cols,
             value=[],
-            size=8,
+            size=min(15, max(5, len(available_cols))),  # Dynamic size based on options
             sizing_mode="stretch_width",
         )
 
@@ -78,13 +78,14 @@ class ColumnSelector(BaseComponent):
 
         # Status message
         if available_cols:
-            status_msg = f"*{len(available_cols)} additional columns available*"
+            status_msg = f"*{len(available_cols)} columns available*"
         else:
             status_msg = "*Load data to see available columns*"
 
-        return pn.Column(
-            pn.pane.Markdown("### Additional Columns"),
+        return pn.Card(
             pn.pane.Markdown(status_msg),
             column_selector,
+            title="Show additional Columns",
+            collapsed=True,
             sizing_mode="stretch_width",
         )
