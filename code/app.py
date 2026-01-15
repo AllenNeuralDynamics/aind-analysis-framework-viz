@@ -7,16 +7,23 @@ To run:
     panel serve code/app.py --dev --show
 """
 
-import json
 import logging
-from datetime import datetime, timedelta
 
 import pandas as pd
 import panel as pn
 import param
 from bokeh.io import curdoc
 
-from components.asset_viewer import AssetViewer, get_s3_image_url
+from components import (
+    AssetViewer,
+    ColumnSelector,
+    DataTable,
+    DocDBQueryPanel,
+    FilterPanel,
+    LoadDataPanel,
+    StatsPanel,
+    get_s3_image_url,
+)
 from config import (
     PROJECT_REGISTRY,
     AppConfig,
@@ -74,17 +81,41 @@ class AINDAnalysisFrameworkApp(BaseApp):
 
         # Initialize with default project config (but don't load data yet)
         self.current_config = PROJECT_REGISTRY[self.project_selector.value][1]
-        self._init_asset_viewer()
+        self._init_components()
 
-    def _init_asset_viewer(self):
-        """Initialize or reinitialize the asset viewer based on current config."""
-        if self.current_config:
-            self.asset_viewer = AssetViewer(
-                s3_location_column=self.current_config.asset.s3_location_column,
-                asset_filename=self.current_config.asset.asset_filename,
-                width=self.current_config.asset.viewer_width,
-                info_columns=self.current_config.asset.info_columns,
-            )
+    def _init_components(self):
+        """Initialize or reinitialize components based on current config."""
+        if not self.current_config:
+            return
+
+        # Asset viewer
+        self.asset_viewer = AssetViewer(
+            s3_location_column=self.current_config.asset.s3_location_column,
+            asset_filename=self.current_config.asset.asset_filename,
+            width=self.current_config.asset.viewer_width,
+            info_columns=self.current_config.asset.info_columns,
+        )
+
+        # Store component instances
+        self._components["data_table"] = DataTable(self.data_holder, self.current_config)
+        self._components["column_selector"] = ColumnSelector(self.data_holder, self.current_config)
+        self._components["filter_panel"] = FilterPanel(
+            self.data_holder,
+            self.current_config,
+            apply_filter_callback=self.apply_global_filter,
+        )
+        self._components["docdb_query"] = DocDBQueryPanel(
+            self.data_holder,
+            self.current_config,
+            load_data_callback=self.load_data,
+            get_default_query=self._get_default_query,
+        )
+        self._components["load_panel"] = LoadDataPanel(
+            self.data_holder,
+            self.current_config,
+            load_data_callback=self.load_data,
+        )
+        self._components["stats_panel"] = StatsPanel(self.data_holder, self.current_config)
 
     def _on_project_change(self, event):
         """Handle project selection change."""
@@ -92,7 +123,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
         if project_name in PROJECT_REGISTRY:
             _, config = PROJECT_REGISTRY[project_name]
             self.current_config = config
-            self._init_asset_viewer()
+            self._init_components()
 
             # Reset data state when project changes
             self.data_holder.filtered_df = pd.DataFrame()
@@ -152,10 +183,6 @@ class AINDAnalysisFrameworkApp(BaseApp):
             self.data_holder.load_status = f"Error: {e}"
             return f"Error: {e}"
 
-    def _get_display_columns(self) -> list:
-        """Columns to show in the main table."""
-        return self.current_config.data_table.display_columns if self.current_config else []
-
     def apply_global_filter(self, query_string: str) -> str:
         """Apply pandas query filter to the data."""
         if not self.data_holder.is_loaded or self.df_full is None or self.df_full.empty:
@@ -181,174 +208,6 @@ class AINDAnalysisFrameworkApp(BaseApp):
             pn.pane.Markdown("### Project Selection"),
             self.project_selector,
             pn.pane.Markdown("*Select a project, optionally edit the DocDB query below, then click Load Data*"),
-            sizing_mode="stretch_width",
-        )
-
-    def create_load_data_panel(self) -> pn.Column:
-        """Create the Load Data button with status and loading indicator."""
-        load_button = pn.widgets.Button(
-            name="Load Data from DocDB",
-            button_type="primary",
-            sizing_mode="stretch_width",
-        )
-        status = pn.pane.Markdown("", css_classes=["alert", "alert-info", "p-2"])
-
-        # Loading indicator (hidden by default)
-        loading_spinner = pn.indicators.LoadingSpinner(
-            value=False,
-            width=30,
-            height=30,
-            sizing_mode="fixed",
-        )
-
-        def load_callback(_event):
-            # Show loading spinner and update status
-            loading_spinner.value = True
-            status.object = "**Loading data...**"
-
-            # Load the data
-            result = self.load_data()
-
-            # Hide spinner and show result
-            loading_spinner.value = False
-            status.object = result
-
-        load_button.on_click(load_callback)
-
-        return pn.Column(
-            pn.Row(load_button, loading_spinner),
-            status,
-            sizing_mode="stretch_width",
-        )
-
-    def create_filter_panel(self) -> pn.Column:
-        """Create the global filter panel."""
-        filter_query = pn.widgets.TextAreaInput(
-            name="Pandas Query",
-            value="",
-            placeholder=self.current_config.filter.default_placeholder if self.current_config else "",
-            height=60,
-            sizing_mode="stretch_width",
-        )
-
-        filter_button = pn.widgets.Button(name="Apply Filter", button_type="primary", width=120)
-        reset_button = pn.widgets.Button(name="Reset", button_type="light", width=80)
-        status = pn.pane.Markdown("", css_classes=["alert", "alert-info", "p-2"])
-
-        def apply_callback(_event):
-            result = self.apply_global_filter(filter_query.value)
-            status.object = result
-
-        def reset_callback(_event):
-            filter_query.value = ""
-            result = self.apply_global_filter("")
-            status.object = result
-
-        filter_button.on_click(apply_callback)
-        reset_button.on_click(reset_callback)
-
-        # Build example queries from config
-        examples = "\n**Example queries:**\n"
-        for ex in self.current_config.filter.example_queries:
-            examples += f"- `{ex}`\n"
-
-        examples_card = pn.Card(
-            pn.pane.Markdown(examples),
-            title="Example Queries",
-            collapsed=True,
-        )
-
-        return pn.Column(
-            pn.pane.Markdown("### Global Filter"),
-            filter_query,
-            pn.Row(filter_button, reset_button),
-            status,
-            examples_card,
-            sizing_mode="stretch_width",
-        )
-
-    def create_data_table(self, df: pd.DataFrame, additional_cols: list = None) -> pn.widgets.Tabulator:
-        """Create the main data table."""
-        if df is None or df.empty:
-            return pn.pane.Markdown("No data available")
-
-        # Get default display columns that exist in the dataframe
-        default_cols = [c for c in self._get_display_columns() if c in df.columns]
-
-        # Get additional columns that exist in the dataframe
-        if additional_cols is None:
-            additional_cols = self.data_holder.additional_columns
-        additional_cols = [c for c in additional_cols if c in df.columns]
-
-        # Combine default and additional columns
-        display_cols = default_cols + additional_cols
-
-        table = pn.widgets.Tabulator(
-            df[display_cols],
-            selectable=self.current_config.data_table.selectable,
-            disabled=self.current_config.data_table.disabled,
-            frozen_columns=self.current_config.data_table.frozen_columns,
-            header_filters=self.current_config.data_table.header_filters,
-            show_index=self.current_config.data_table.show_index,
-            height=self.current_config.data_table.table_height,
-            sizing_mode="stretch_width",
-            stylesheets=[":host .tabulator {font-size: 11px;}"],
-        )
-
-        # Handle row selection
-        def on_selection(event):
-            if event.new:
-                # Get IDs from all selected indices
-                selected_ids = []
-                for idx in event.new:
-                    record_id = str(df.iloc[idx][self.current_config.id_column])
-                    selected_ids.append(record_id)
-                logger.info(f"Selected records: {selected_ids}")
-                self.data_holder.selected_record_ids = selected_ids
-            else:
-                logger.info("No records selected")
-                self.data_holder.selected_record_ids = []
-
-        table.param.watch(on_selection, "selection")
-
-        return table
-
-    def create_column_selector(self, df: pd.DataFrame) -> pn.Column:
-        """Create a column selector for additional columns."""
-        # Get default columns
-        default_cols = set(self._get_display_columns())
-
-        # Get available columns (excluding defaults), sorted case-insensitively
-        if df is not None and not df.empty:
-            available_cols = sorted([col for col in df.columns if col not in default_cols], key=str.lower)
-        else:
-            available_cols = []
-
-        # Create multi-select widget
-        column_selector = pn.widgets.MultiSelect(
-            name="Additional Columns",
-            options=available_cols,
-            value=[],
-            size=8,
-            sizing_mode="stretch_width",
-        )
-
-        # Update data_holder when selection changes
-        def on_column_change(event):
-            self.data_holder.additional_columns = list(event.new)
-
-        column_selector.param.watch(on_column_change, "value")
-
-        # Status message
-        if available_cols:
-            status_msg = f"*{len(available_cols)} additional columns available*"
-        else:
-            status_msg = "*Load data to see available columns*"
-
-        return pn.Column(
-            pn.pane.Markdown("### Additional Columns"),
-            pn.pane.Markdown(status_msg),
-            column_selector,
             sizing_mode="stretch_width",
         )
 
@@ -380,7 +239,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
             sizing_mode="stretch_width",
         )
 
-    def create_main_content(self) -> pn.Column:
+    def create_main_content(self) -> pn.viewable.Viewable:
         """Create the main content area."""
         def render_content(is_loaded):
             """Render content based on whether data is loaded."""
@@ -388,11 +247,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
                 return self.create_welcome_content()
 
             # Data is loaded - show table and assets
-            table = pn.bind(
-                self.create_data_table,
-                df=self.data_holder.param.filtered_df,
-                additional_cols=self.data_holder.param.additional_columns,
-            )
+            table = self._components["data_table"].create()
 
             asset_display = self.asset_viewer.create_viewer(
                 record_ids_param=self.data_holder.param.selected_record_ids,
@@ -421,111 +276,18 @@ class AINDAnalysisFrameworkApp(BaseApp):
 
         return pn.bind(render_content, is_loaded=self.data_holder.param.is_loaded)
 
-    def create_docdb_query_panel(self) -> pn.Column:
-        """Create the DocDB query panel for data loading."""
-        default_query = json.dumps(self._get_default_query(), indent=2)
-
-        docdb_query = pn.widgets.TextAreaInput(
-            name="DocDB Query (JSON)",
-            value=default_query,
-            placeholder='e.g., {"subject_id": "778869"}',
-            height=100,
-            sizing_mode="stretch_width",
-        )
-
-        reload_button = pn.widgets.Button(name="Reload Data", button_type="primary", width=120)
-        status = pn.pane.Markdown("", css_classes=["alert", "alert-info", "p-2"])
-
-        # Loading indicator (hidden by default)
-        loading_spinner = pn.indicators.LoadingSpinner(
-            value=False,
-            width=30,
-            height=30,
-            sizing_mode="fixed",
-        )
-
-        def reload_callback(_event):
-            # Show loading spinner and update status
-            loading_spinner.value = True
-            status.object = "**Loading data...**"
-
-            try:
-                query = json.loads(docdb_query.value)
-                result = self.load_data(custom_query=query)
-                status.object = result
-            except json.JSONDecodeError as e:
-                status.object = f"Invalid JSON: {e}"
-            finally:
-                # Hide spinner
-                loading_spinner.value = False
-
-        reload_button.on_click(reload_callback)
-
-        # Build example queries from config
-        examples = "\n**Example queries:**\n"
-        for ex in self.current_config.query.get_example_queries():
-            examples += f"- `{ex}`\n"
-
-        examples_card = pn.Card(
-            pn.pane.Markdown(examples),
-            title="Example Queries",
-            collapsed=True,
-        )
-
-        # Wrap the entire panel in a Card, collapsed by default
-        query_panel = pn.Card(
-            docdb_query,
-            pn.Row(reload_button, loading_spinner),
-            status,
-            examples_card,
-            title="DocDB Query",
-            collapsed=True,
-            sizing_mode="stretch_width",
-            stylesheets=[""":host { margin: 0 10px 10px 10px; }"""],
-        )
-
-        return query_panel
-
     def create_sidebar(self) -> pn.Column:
-        """Create sidebar content."""
-        # Column selector - always visible, updates reactively
-        column_selector = pn.bind(
-            self.create_column_selector,
-            df=self.data_holder.param.filtered_df,
-        )
-
+        """Create sidebar content using extracted components."""
         return pn.Column(
             self.create_project_selector(),
-            self.create_docdb_query_panel(),
-            self.create_load_data_panel(),
+            self._components["docdb_query"].create(),
+            self._components["load_panel"].create(),
             pn.layout.Divider(),
-            column_selector,
+            self._components["column_selector"].create(),
             pn.layout.Divider(),
-            self.create_filter_panel(),
+            self._components["filter_panel"].create(),
             pn.layout.Divider(),
-            pn.pane.Markdown("### Selected"),
-            pn.bind(
-                lambda ids: pn.pane.Markdown(
-                    f"**Count:** {len(ids)}" if ids else "**Count:** 0",
-                    css_classes=["alert", "alert-secondary", "p-2"],
-                ),
-                ids=self.data_holder.param.selected_record_ids,
-            ),
-            pn.pane.Markdown("### Stats"),
-            pn.bind(
-                lambda df: pn.pane.Markdown(
-                    f"**Records:** {len(df) if df is not None else 0}",
-                    css_classes=["alert", "alert-info", "p-2"],
-                ),
-                df=self.data_holder.param.filtered_df,
-            ),
-            pn.bind(
-                lambda df: pn.pane.Markdown(
-                    f"**Subjects:** {df[self.current_config.subject_id_column].nunique() if df is not None and self.current_config and self.current_config.subject_id_column and self.current_config.subject_id_column in df.columns else 'N/A'}",
-                    css_classes=["alert", "alert-info", "p-2"],
-                ),
-                df=self.data_holder.param.filtered_df,
-            ),
+            self._components["stats_panel"].create(),
             sizing_mode="stretch_width",
         )
 
