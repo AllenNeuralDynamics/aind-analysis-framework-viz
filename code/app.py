@@ -337,24 +337,24 @@ class AINDAnalysisFrameworkApp(BaseApp):
         template.sidebar.append(sidebar_content)
         template.main.append(main_content)
 
+        # Capture original URL params BEFORE sync (sync may add default values)
+        from urllib.parse import parse_qs
+
+        original_search = pn.state.location.search or ""
+        if original_search.startswith("?"):
+            original_search = original_search[1:]
+        original_params = parse_qs(original_search)
+
         # Sync URL state after layout is created
         self._sync_url_state()
 
-        # Auto-load data and apply filter if specified in URL
+        # Auto-load data and apply filter if specified in original URL
         def _auto_load():
-            from urllib.parse import parse_qs, urlparse
-
-            # Parse URL query parameters
-            query_string = pn.state.location.search or ""
-            if query_string.startswith("?"):
-                query_string = query_string[1:]
-            params = parse_qs(query_string)
-
-            # Auto-load if project is explicitly in URL
-            if params.get("project") and self.project_selector.value in PROJECT_REGISTRY:
+            # Use original_params captured before sync
+            if original_params.get("project") and self.project_selector.value in PROJECT_REGISTRY:
                 self.load_data()
                 # Apply filter if present in URL (preserve selection from URL)
-                if params.get("filter"):
+                if original_params.get("filter"):
                     filter_panel = self._components.get("filter_panel")
                     if filter_panel and filter_panel.filter_query_widget.value:
                         self.apply_global_filter(
