@@ -193,6 +193,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
             return f"Reset to full dataset (N={len(self.df_full)})"
 
         try:
+            logger.info(f"Applying filter query: '{query_string}'")
             filtered = self.df_full.query(query_string)
             if len(filtered) == 0:
                 return "Query returned 0 results. Filter not applied."
@@ -200,6 +201,8 @@ class AINDAnalysisFrameworkApp(BaseApp):
             self.data_holder.filtered_df = filtered.copy()
             return f"Showing {len(filtered)} of {len(self.df_full)} records"
         except Exception as e:
+            logger.error(f"Query error: {e}")
+            logger.error(f"Query string was: '{query_string}'")
             return f"Query error: {e}"
 
     def create_project_selector(self) -> pn.Column:
