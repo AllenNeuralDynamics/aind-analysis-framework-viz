@@ -426,6 +426,28 @@ DYNAMIC_FORAGING_LIFETIME_CONFIG = AppConfig(
 
 
 # =============================================================================
+# Project Registry
+# =============================================================================
+# Maps display names to (collection_name, AppConfig) tuples
+# Add new projects here to make them available in the app
+
+PROJECT_REGISTRY: dict[str, tuple[str, AppConfig]] = {
+    "Dynamic Foraging Model Fitting": (
+        "dynamic-foraging-model-fitting",
+        DYNAMIC_FORAGING_MODEL_FITTING_CONFIG,
+    ),
+    "Dynamic Foraging NM": (
+        "dynamic-foraging-nm",
+        DYNAMIC_FORAGING_NM_CONFIG,
+    ),
+    "Dynamic Foraging Lifetime": (
+        "dynamic-foraging-lifetime",
+        DYNAMIC_FORAGING_LIFETIME_CONFIG,
+    ),
+}
+
+
+# =============================================================================
 # Usage Examples
 # =============================================================================
 #

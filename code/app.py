@@ -18,18 +18,9 @@ from bokeh.io import curdoc
 
 from components.asset_viewer import AssetViewer, get_s3_image_url
 from config import (
-    DYNAMIC_FORAGING_MODEL_FITTING_CONFIG,
-    DYNAMIC_FORAGING_NM_CONFIG,
-    DYNAMIC_FORAGING_LIFETIME_CONFIG,
+    PROJECT_REGISTRY,
     AppConfig,
 )
-
-# Available project configurations with display names
-PROJECT_OPTIONS = {
-    "Dynamic Foraging Model Fitting": ("dynamic-foraging-model-fitting", DYNAMIC_FORAGING_MODEL_FITTING_CONFIG),
-    "Dynamic Foraging NM": ("dynamic-foraging-nm", DYNAMIC_FORAGING_NM_CONFIG),
-    "Dynamic Foraging Lifetime": ("dynamic-foraging-lifetime", DYNAMIC_FORAGING_LIFETIME_CONFIG),
-}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -79,7 +70,7 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
         # Project selector widget
         self.project_selector = pn.widgets.Select(
             name="Select Project",
-            options=list(PROJECT_OPTIONS.keys()),
+            options=list(PROJECT_REGISTRY.keys()),
             value="Dynamic Foraging Model Fitting",
             sizing_mode="stretch_width",
         )
@@ -88,7 +79,7 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
         self.project_selector.param.watch(self._on_project_change, "value")
 
         # Initialize with default project config (but don't load data yet)
-        self.current_config = PROJECT_OPTIONS[self.project_selector.value][1]
+        self.current_config = PROJECT_REGISTRY[self.project_selector.value][1]
         self._init_asset_viewer()
 
     def _init_asset_viewer(self):
@@ -103,8 +94,8 @@ class AINDAnalysisFrameworkApp(param.Parameterized):
     def _on_project_change(self, event):
         """Handle project selection change."""
         project_name = event.new
-        if project_name in PROJECT_OPTIONS:
-            _, config = PROJECT_OPTIONS[project_name]
+        if project_name in PROJECT_REGISTRY:
+            _, config = PROJECT_REGISTRY[project_name]
             self.current_config = config
             self._init_asset_viewer()
 
