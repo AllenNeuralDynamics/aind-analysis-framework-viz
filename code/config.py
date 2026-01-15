@@ -5,12 +5,14 @@ This module provides project-specific configuration settings, making the app
 easily adaptable for different AIND projects by modifying only this file.
 """
 
+import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
 import pandas as pd
+import panel as pn
 
 
 def flatten_dict(d: dict, parent_key: str = "", sep: str = ".") -> dict:
@@ -86,32 +88,52 @@ class DynamicForagingDataLoader(DataLoader):
         self.paginate_settings = paginate_settings or {"paginate": False}
 
     def load(self, query: dict) -> pd.DataFrame:
-        """Load data using get_mle_model_fitting."""
+        """Load data using get_mle_model_fitting (cached)."""
+        # Convert query dict to JSON string for hashable cache key
+        query_key = json.dumps(query, sort_keys=True, default=str)
+        return self._load_cached(
+            query_key,
+            self.include_metrics,
+            self.include_latent_variables,
+            self.download_figures,
+            json.dumps(self.paginate_settings, sort_keys=True),
+        )
+
+    @staticmethod
+    @pn.cache(max_items=10, policy='LRU')
+    def _load_cached(
+        query_key: str,
+        include_metrics: bool,
+        include_latent_variables: bool,
+        download_figures: bool,
+        paginate_settings_key: str,
+    ) -> pd.DataFrame:
+        """Cached data loading - memoized based on query and settings."""
         from aind_analysis_arch_result_access import get_mle_model_fitting
+
+        query = json.loads(query_key)
+        paginate_settings = json.loads(paginate_settings_key)
 
         df = get_mle_model_fitting(
             from_custom_query=query,
-            if_include_metrics=self.include_metrics,
-            if_include_latent_variables=self.include_latent_variables,
-            if_download_figures=self.download_figures,
-            paginate_settings=self.paginate_settings,
+            if_include_metrics=include_metrics,
+            if_include_latent_variables=include_latent_variables,
+            if_download_figures=download_figures,
+            paginate_settings=paginate_settings,
         )
 
         # Flatten params column if it exists and contains dicts
         if df is not None and "params" in df.columns:
-            df = self._flatten_params(df)
+            df = DynamicForagingDataLoader._flatten_params_static(df)
 
         return df
 
-    def _flatten_params(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Flatten the params column into separate params.xxx columns."""
-        # Check if params contains dicts
+    @staticmethod
+    def _flatten_params_static(df: pd.DataFrame) -> pd.DataFrame:
+        """Flatten the params column into separate params.xxx columns (static version)."""
         if df["params"].apply(lambda x: isinstance(x, dict)).any():
-            # Extract params as a normalized dataframe
             params_df = pd.json_normalize(df["params"].tolist(), sep=".")
-            # Prefix column names with "params."
             params_df.columns = [f"params.{col}" for col in params_df.columns]
-            # Drop original params column and join flattened columns
             df = df.drop(columns=["params"]).join(params_df)
         return df
 
@@ -151,30 +173,48 @@ class GenericDataLoader(DataLoader):
         self.max_level = max_level
         self.paginate_settings = paginate_settings or {"paginate": False}
 
-        # Lazy initialization of client
-        self._client = None
-
-    def _get_client(self):
-        """Get or create the DocDB client."""
-        if self._client is None:
-            from aind_data_access_api.document_db import MetadataDbClient
-
-            self._client = MetadataDbClient(
-                host=self.host,
-                database=self.database,
-                collection=self.collection_name,
-            )
-        return self._client
-
     def load(self, query: dict) -> pd.DataFrame:
-        """Load data from DocDB and flatten using json_normalize."""
-        client = self._get_client()
+        """Load data from DocDB and flatten using json_normalize (cached)."""
+        # Convert query dict to JSON string for hashable cache key
+        query_key = json.dumps(query, sort_keys=True, default=str)
+        return self._load_cached(
+            query_key,
+            self.collection_name,
+            self.host,
+            self.database,
+            self.flatten_separator,
+            self.max_level,
+            json.dumps(self.paginate_settings, sort_keys=True),
+        )
+
+    @staticmethod
+    @pn.cache(max_items=10, policy='LRU')
+    def _load_cached(
+        query_key: str,
+        collection_name: str,
+        host: str,
+        database: str,
+        flatten_separator: str,
+        max_level: int | None,
+        paginate_settings_key: str,
+    ) -> pd.DataFrame:
+        """Cached data loading - memoized based on query and settings."""
+        from aind_data_access_api.document_db import MetadataDbClient
+
+        query = json.loads(query_key)
+        paginate_settings = json.loads(paginate_settings_key)
+
+        client = MetadataDbClient(
+            host=host,
+            database=database,
+            collection=collection_name,
+        )
 
         # Query DocDB - get all fields, no projection
         records = client.retrieve_docdb_records(
             filter_query=query,
             projection=None,
-            **self.paginate_settings,
+            **paginate_settings,
         )
 
         if not records:
@@ -183,28 +223,26 @@ class GenericDataLoader(DataLoader):
         # Preprocess: extract single-element lists so json_normalize can flatten them
         # This handles common DocDB pattern where processing.data_processes is [ {...} ]
         for record in records:
-            self._extract_single_element_lists(record)
+            GenericDataLoader._extract_single_element_lists_static(record)
 
         # Use json_normalize for all flattening
         df = pd.json_normalize(
             records,
-            sep=self.flatten_separator,
-            max_level=self.max_level,
+            sep=flatten_separator,
+            max_level=max_level,
         )
 
         return df
 
-    def _extract_single_element_lists(self, record: dict, max_depth: int = 3):
-        """Recursively extract single-element lists from nested dict."""
+    @staticmethod
+    def _extract_single_element_lists_static(record: dict, max_depth: int = 3):
+        """Recursively extract single-element lists from nested dict (static version)."""
         for key, value in list(record.items()):
             if isinstance(value, list) and len(value) == 1 and isinstance(value[0], dict):
-                # Replace single-element list of dicts with the dict itself
                 record[key] = value[0]
-                # Recurse into the extracted dict
-                self._extract_single_element_lists(record[key], max_depth - 1)
+                GenericDataLoader._extract_single_element_lists_static(record[key], max_depth - 1)
             elif isinstance(value, dict) and max_depth > 0:
-                # Recurse into nested dicts
-                self._extract_single_element_lists(value, max_depth - 1)
+                GenericDataLoader._extract_single_element_lists_static(value, max_depth - 1)
 
 
 @dataclass
