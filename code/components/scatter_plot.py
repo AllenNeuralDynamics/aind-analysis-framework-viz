@@ -437,7 +437,7 @@ class ScatterPlot(BaseComponent):
             y_axis_label=y_col,
             width=int(plot_width),
             height=int(plot_height),
-            tools="pan,wheel_zoom,box_zoom,reset",
+            tools="pan,wheel_zoom,box_zoom,box_select,lasso_select,reset",
             active_drag="box_zoom",
         )
 
