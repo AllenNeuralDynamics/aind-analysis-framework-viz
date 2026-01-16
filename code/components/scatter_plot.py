@@ -437,8 +437,9 @@ class ScatterPlot(BaseComponent):
             y_axis_label=y_col,
             width=int(plot_width),
             height=int(plot_height),
-            tools="pan,wheel_zoom,box_zoom,box_select,lasso_select,reset",
-            active_drag="box_zoom",
+            tools="pan,wheel_zoom,box_zoom,box_select,lasso_select,reset,tap",
+            active_drag="lasso_select",
+            active_scroll="wheel_zoom",
         )
 
         # Add scatter points
@@ -459,11 +460,7 @@ class ScatterPlot(BaseComponent):
         )
         p.add_tools(hover)
 
-        # Add tap tool for selection
-        tap = TapTool(renderers=[scatter_renderer])
-        p.add_tools(tap)
-
-        # Selection callback
+        # Selection callback (handles lasso, box select, and tap)
         def on_tap_select(_attr, _old, new):
             if self._syncing_selection:
                 return
