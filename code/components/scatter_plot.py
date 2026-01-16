@@ -59,6 +59,35 @@ class ScatterPlot(BaseComponent):
         self._latest_figure = None
         self._source = None
         self._url_sync_initialized = False
+        self._syncing_selection = False
+        self.data_holder.param.watch(self._sync_selection_to_source, "selected_record_ids")
+
+    def _apply_source_selection(self, selected_ids: list[str]) -> None:
+        """Update scatter selection to match selected record IDs."""
+        if self._source is None:
+            return
+        id_values = [str(value) for value in self._source.data.get(self.config.id_column, [])]
+        indices = [i for i, record_id in enumerate(id_values) if record_id in selected_ids]
+        current = list(self._source.selected.indices or [])
+        if set(current) == set(indices):
+            return
+        def set_indices():
+            self._syncing_selection = True
+            try:
+                self._source.selected.indices = indices
+            finally:
+                self._syncing_selection = False
+
+        doc = pn.state.curdoc
+        if doc is not None:
+            doc.add_next_tick_callback(set_indices)
+        else:
+            set_indices()
+
+    def _sync_selection_to_source(self, event) -> None:
+        """Sync DataHolder selection into the scatter plot."""
+        selected_ids = [str(record_id) for record_id in (event.new or [])]
+        self._apply_source_selection(selected_ids)
 
     def _sync_url_state(self) -> None:
         """Bidirectionally sync widget state to URL query params."""
@@ -436,13 +465,25 @@ class ScatterPlot(BaseComponent):
 
         # Selection callback
         def on_tap_select(_attr, _old, new):
+            if self._syncing_selection:
+                return
             if new:
-                selected_idx = new[0]
-                record_id = str(self._source.data[self.config.id_column][selected_idx])
-                logger.debug(f"Selected record: {record_id}")
-                self.data_holder.selected_record_ids = [record_id]
+                selected_ids = []
+                id_values = self._source.data[self.config.id_column]
+                for idx in new:
+                    if idx < len(id_values):
+                        selected_ids.append(str(id_values[idx]))
+                logger.debug(f"Selected records: {selected_ids}")
+                if selected_ids != self.data_holder.selected_record_ids:
+                    self.data_holder.selected_record_ids = selected_ids
+            else:
+                if self.data_holder.selected_record_ids:
+                    self.data_holder.selected_record_ids = []
 
         self._source.selected.on_change("indices", on_tap_select)
+        self._apply_source_selection(
+            [str(record_id) for record_id in self.data_holder.selected_record_ids]
+        )
 
         # Add color bar for continuous mappings
         if color_column:
