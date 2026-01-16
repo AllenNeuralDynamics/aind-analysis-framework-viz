@@ -27,6 +27,29 @@ class DataTable(BaseComponent):
         """Initialize the data table."""
         super().__init__(data_holder, config)
         self.table_widget = None  # Exposed for URL sync
+        self._current_df = None
+        self._syncing_selection = False
+        self.data_holder.param.watch(self._sync_selection_to_table, "selected_record_ids")
+
+    def _apply_table_selection(self, selected_ids: List[str]) -> None:
+        """Update table selection to match selected record IDs."""
+        if self.table_widget is None or self._current_df is None:
+            return
+        id_values = self._current_df[self.config.id_column].astype(str).tolist()
+        indices = [i for i, record_id in enumerate(id_values) if record_id in selected_ids]
+        current = list(self.table_widget.selection or [])
+        if set(current) == set(indices):
+            return
+        self._syncing_selection = True
+        try:
+            self.table_widget.selection = indices
+        finally:
+            self._syncing_selection = False
+
+    def _sync_selection_to_table(self, event) -> None:
+        """Sync DataHolder selection into the table widget."""
+        selected_ids = [str(record_id) for record_id in (event.new or [])]
+        self._apply_table_selection(selected_ids)
 
     def create(self) -> pn.viewable.Viewable:
         """
@@ -63,6 +86,8 @@ class DataTable(BaseComponent):
         if df is None or df.empty:
             return pn.pane.Markdown("No data available")
 
+        self._current_df = df
+
         # Get default display columns that exist in the dataframe
         default_cols = [c for c in self._get_display_columns() if c in df.columns]
 
@@ -88,6 +113,8 @@ class DataTable(BaseComponent):
 
         # Handle row selection
         def on_selection(event):
+            if self._syncing_selection:
+                return
             if event.new:
                 # Get IDs from all selected indices
                 selected_ids = []
@@ -97,14 +124,21 @@ class DataTable(BaseComponent):
                         record_id = str(df.iloc[idx][self.config.id_column])
                         selected_ids.append(record_id)
                 logger.info(f"Selected records: {selected_ids}")
-                self.data_holder.selected_record_ids = selected_ids
+                if selected_ids != self.data_holder.selected_record_ids:
+                    self.data_holder.selected_record_ids = selected_ids
             else:
                 logger.info("No records selected")
-                self.data_holder.selected_record_ids = []
+                if self.data_holder.selected_record_ids:
+                    self.data_holder.selected_record_ids = []
 
         self.table_widget.param.watch(on_selection, "selection")
 
         # Sync to URL for this table widget instance
         pn.state.location.sync(self.table_widget, {'selection': 'selected'})
+
+        # Ensure table reflects current shared selection
+        self._apply_table_selection(
+            [str(record_id) for record_id in self.data_holder.selected_record_ids]
+        )
 
         return self.table_widget

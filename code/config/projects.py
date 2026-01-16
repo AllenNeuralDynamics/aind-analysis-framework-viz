@@ -22,9 +22,12 @@ DYNAMIC_FORAGING_MODEL_FITTING_CONFIG = AppConfig(
         download_figures=False,
         paginate_settings={"paginate": False},
     ),
+    query=QueryConfig(
+        default_days_back=30,  # Load only recent month for debugging
+    ),
     scatter_plot=ScatterPlotConfig(
         x_column="n_trials",
-        y_column="prediction_accuracy",
+        y_column="LPT_AIC",
         color_column="agent_alias",
         tooltip_image_column="S3_location",
     ),

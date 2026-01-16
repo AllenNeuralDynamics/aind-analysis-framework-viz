@@ -59,6 +59,35 @@ class ScatterPlot(BaseComponent):
         self._latest_figure = None
         self._source = None
         self._url_sync_initialized = False
+        self._syncing_selection = False
+        self.data_holder.param.watch(self._sync_selection_to_source, "selected_record_ids")
+
+    def _apply_source_selection(self, selected_ids: list[str]) -> None:
+        """Update scatter selection to match selected record IDs."""
+        if self._source is None:
+            return
+        id_values = [str(value) for value in self._source.data.get(self.config.id_column, [])]
+        indices = [i for i, record_id in enumerate(id_values) if record_id in selected_ids]
+        current = list(self._source.selected.indices or [])
+        if set(current) == set(indices):
+            return
+        def set_indices():
+            self._syncing_selection = True
+            try:
+                self._source.selected.indices = indices
+            finally:
+                self._syncing_selection = False
+
+        doc = pn.state.curdoc
+        if doc is not None:
+            doc.add_next_tick_callback(set_indices)
+        else:
+            set_indices()
+
+    def _sync_selection_to_source(self, event) -> None:
+        """Sync DataHolder selection into the scatter plot."""
+        selected_ids = [str(record_id) for record_id in (event.new or [])]
+        self._apply_source_selection(selected_ids)
 
     def _sync_url_state(self) -> None:
         """Bidirectionally sync widget state to URL query params."""
@@ -98,14 +127,14 @@ class ScatterPlot(BaseComponent):
         )
         self.color_select = pn.widgets.Select(
             name="Color By",
-            options=["None"],
-            value="None",
+            options=["---"],
+            value="---",
             width=180,
         )
         self.size_select = pn.widgets.Select(
             name="Size By",
-            options=["None"],
-            value="None",
+            options=["---"],
+            value="---",
             width=180,
         )
 
@@ -195,14 +224,14 @@ class ScatterPlot(BaseComponent):
         # Track if this is initial setup (options were empty)
         x_was_empty = not self.x_select.options
         y_was_empty = not self.y_select.options
-        color_was_empty = len(self.color_select.options) <= 1  # Only has "None"
+        color_was_empty = len(self.color_select.options) <= 1  # Only has "---"
         size_was_empty = len(self.size_select.options) <= 1
 
         # Update options
         self.x_select.options = numeric_cols
         self.y_select.options = numeric_cols
-        self.color_select.options = ["None"] + all_cols
-        self.size_select.options = ["None"] + numeric_cols
+        self.color_select.options = ["---"] + all_cols
+        self.size_select.options = ["---"] + numeric_cols
 
         # Set X axis default only if needed
         if (x_was_empty and self.x_select.value in (None, "")) or (
@@ -225,24 +254,24 @@ class ScatterPlot(BaseComponent):
                 self.y_select.value = numeric_cols[0]
 
         # Set Color default only if needed
-        color_options = ["None"] + all_cols
-        if (color_was_empty and self.color_select.value in (None, "", "None")) or (
+        color_options = ["---"] + all_cols
+        if (color_was_empty and self.color_select.value in (None, "")) or (
             self.color_select.value not in color_options
         ):
             if scatter_config.color_column and scatter_config.color_column in all_cols:
                 self.color_select.value = scatter_config.color_column
             else:
-                self.color_select.value = "None"
+                self.color_select.value = "---"
 
         # Set Size default only if needed
-        size_options = ["None"] + numeric_cols
-        if (size_was_empty and self.size_select.value in (None, "", "None")) or (
+        size_options = ["---"] + numeric_cols
+        if (size_was_empty and self.size_select.value in (None, "")) or (
             self.size_select.value not in size_options
         ):
             if scatter_config.size_column and scatter_config.size_column in numeric_cols:
                 self.size_select.value = scatter_config.size_column
             else:
-                self.size_select.value = "None"
+                self.size_select.value = "---"
 
     def _build_tooltip_html(self) -> str:
         """Build HTML template for hover tooltip."""
@@ -323,7 +352,7 @@ class ScatterPlot(BaseComponent):
         df_valid = df.loc[valid_idx].copy()
 
         # Determine color mapping
-        color_column = color_col if color_col != "None" else None
+        color_column = color_col if color_col != "---" else None
         color_spec, color_mapper = determine_color_mapping(
             df_valid,
             color_column,
@@ -332,7 +361,7 @@ class ScatterPlot(BaseComponent):
         )  # Now uses intelligent palette selection from all_palettes
 
         # Determine size mapping
-        size_column = size_col if size_col != "None" else None
+        size_column = size_col if size_col != "---" else None
         min_size, max_size = size_range
         min_size = int(min_size)
         max_size = int(max_size)
@@ -408,8 +437,9 @@ class ScatterPlot(BaseComponent):
             y_axis_label=y_col,
             width=int(plot_width),
             height=int(plot_height),
-            tools="pan,wheel_zoom,box_zoom,reset",
-            active_drag="box_zoom",
+            tools="pan,wheel_zoom,box_zoom,box_select,lasso_select,reset,tap",
+            active_drag="lasso_select",
+            active_scroll="wheel_zoom",
         )
 
         # Add scatter points
@@ -430,19 +460,27 @@ class ScatterPlot(BaseComponent):
         )
         p.add_tools(hover)
 
-        # Add tap tool for selection
-        tap = TapTool(renderers=[scatter_renderer])
-        p.add_tools(tap)
-
-        # Selection callback
+        # Selection callback (handles lasso, box select, and tap)
         def on_tap_select(_attr, _old, new):
+            if self._syncing_selection:
+                return
             if new:
-                selected_idx = new[0]
-                record_id = str(self._source.data[self.config.id_column][selected_idx])
-                logger.debug(f"Selected record: {record_id}")
-                self.data_holder.selected_record_ids = [record_id]
+                selected_ids = []
+                id_values = self._source.data[self.config.id_column]
+                for idx in new:
+                    if idx < len(id_values):
+                        selected_ids.append(str(id_values[idx]))
+                logger.debug(f"Selected records: {selected_ids}")
+                if selected_ids != self.data_holder.selected_record_ids:
+                    self.data_holder.selected_record_ids = selected_ids
+            else:
+                if self.data_holder.selected_record_ids:
+                    self.data_holder.selected_record_ids = []
 
         self._source.selected.on_change("indices", on_tap_select)
+        self._apply_source_selection(
+            [str(record_id) for record_id in self.data_holder.selected_record_ids]
+        )
 
         # Add color bar for continuous mappings
         if color_column:
@@ -480,6 +518,13 @@ class ScatterPlot(BaseComponent):
         try:
             # Update column options when data changes
             self._update_column_options(df)
+
+            # After updating options, use current widget values to handle
+            # the race condition where widget values are set during render
+            x_col = self.x_select.value or x_col
+            y_col = self.y_select.value or y_col
+            color_col = self.color_select.value or color_col
+            size_col = self.size_select.value or size_col
 
             return self._create_figure(
                 df,

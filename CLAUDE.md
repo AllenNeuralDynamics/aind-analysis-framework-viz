@@ -120,3 +120,18 @@ See `.claude/skills/panel-architecture.md` for:
 3. **Separation**: Separate data loading (backend) from visualization (frontend)
 4. **Reusability**: Components should work with different DataFrames via configuration
 5. **Skills First**: Document stable patterns in skills for future sessions
+
+## Documentation Conventions
+
+- Root `README.md` is for Hugging Face Space metadata and should link to `.github/README.md` for details
+
+## ⚠️ IMPORTANT: Release Workflow (Required for ALL PRs)
+
+- **Version Bumping**: Bump version using semantic versioning before issuing any PR
+  - **MAJOR** (X.0.0): Breaking changes, API redesigns
+  - **MINOR** (0.X.0): New features, backward-compatible additions
+  - **PATCH** (0.0.X): Bug fixes, small improvements
+- **Files to update**:
+  - `code/__init__.py` - `__version__` variable
+  - `pyproject.toml` - `version` field in `[project]` section
+- **Assignment**: Assign the PR to hanhou
