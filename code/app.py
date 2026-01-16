@@ -366,7 +366,13 @@ class AINDAnalysisFrameworkApp(BaseApp):
     def create_sidebar(self) -> pn.Column:
         """Create sidebar content using extracted components."""
         credits = pn.pane.Markdown(
-            f"---\n\n**Built by** Han Hou & Claude Code  \n**Version** {app_init.__version__}",
+            (
+                "---\n\n"
+                "🔨 **Built by** Han Hou & Claude Code  \n"
+                f"🏷️ **Version** {app_init.__version__}  \n"
+                "🔗 **Repo** "
+                "[aind-analysis-framework-viz](https://github.com/AllenNeuralDynamics/aind-analysis-framework-viz)"
+            ),
             sizing_mode="stretch_width",
         )
 
