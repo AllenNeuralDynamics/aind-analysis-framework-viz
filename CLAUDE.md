@@ -125,7 +125,7 @@ See `.claude/skills/panel-architecture.md` for:
 
 - Root `README.md` is for Hugging Face Space metadata and should link to `.github/README.md` for details
 
-## Release Workflow
+## ⚠️ IMPORTANT: Release Workflow (Required for ALL PRs)
 
 - **Version Bumping**: Bump version using semantic versioning before issuing any PR
   - **MAJOR** (X.0.0): Breaking changes, API redesigns
@@ -134,3 +134,4 @@ See `.claude/skills/panel-architecture.md` for:
 - **Files to update**:
   - `code/__init__.py` - `__version__` variable
   - `pyproject.toml` - `version` field in `[project]` section
+- **Assignment**: Assign the PR to hanhou
