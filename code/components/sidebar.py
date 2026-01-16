@@ -84,52 +84,51 @@ class StatsPanel(BaseComponent):
 
     def create(self) -> pn.Column:
         """Create the stats panel UI with reactive bindings."""
-        # Selected count
-        selected_display = pn.bind(
-            lambda ids: pn.pane.Markdown(
-                f"**Count:** {len(ids)}" if ids else "**Count:** 0",
-                css_classes=["alert", "alert-secondary", "p-2"],
-            ),
-            ids=self.data_holder.param.selected_record_ids,
-        )
 
-        # Records count
-        records_display = pn.bind(
-            lambda df: pn.pane.Markdown(
-                f"**Records:** {len(df) if df is not None else 0}",
-                css_classes=["alert", "alert-info", "p-2"],
-            ),
-            df=self.data_holder.param.filtered_df,
-        )
+        def render_stats(ids, df):
+            """Render combined stats with filtered and selected info."""
+            if df is None or df.empty:
+                return pn.pane.Markdown(
+                    "**Filtered:** 0 records, 0 subjects  \n**Selected:** 0 records, 0 subjects",
+                    css_classes=["alert", "alert-secondary", "p-1"],
+                    styles={"font-size": "12px"},
+                )
 
-        # Subjects count (if subject_id_column is configured)
-        def render_subjects(df):
+            # Get filtered stats
+            n_records = len(df)
             if (
-                df is not None
-                and self.config
+                self.config
                 and self.config.subject_id_column
                 and self.config.subject_id_column in df.columns
             ):
-                count = df[self.config.subject_id_column].nunique()
-                return pn.pane.Markdown(
-                    f"**Subjects:** {count}",
-                    css_classes=["alert", "alert-info", "p-2"],
-                )
+                n_subjects = df[self.config.subject_id_column].nunique()
+            else:
+                n_subjects = 0
+
+            # Get selected stats
+            n_selected = len(ids)
+            if n_selected > 0 and self.config.subject_id_column:
+                # Filter df to selected records and count subjects
+                df_selected = df[df[self.config.id_column].astype(str).isin(ids)]
+                n_selected_subjects = df_selected[self.config.subject_id_column].nunique()
+            else:
+                n_selected_subjects = 0
+
             return pn.pane.Markdown(
-                "**Subjects:** N/A",
-                css_classes=["alert", "alert-info", "p-2"],
+                f"**Filtered:** {n_records} records, {n_subjects} subjects  \n"
+                f"**Selected:** {n_selected} records, {n_selected_subjects} subjects",
+                css_classes=["alert", "alert-secondary", "p-1"],
+                styles={"font-size": "12px"},
             )
 
-        subjects_display = pn.bind(
-            render_subjects,
+        stats_display = pn.bind(
+            render_stats,
+            ids=self.data_holder.param.selected_record_ids,
             df=self.data_holder.param.filtered_df,
         )
 
         return pn.Column(
-            pn.pane.Markdown("### Selected"),
-            selected_display,
-            pn.pane.Markdown("### Stats"),
-            records_display,
-            subjects_display,
+            stats_display,
             sizing_mode="stretch_width",
+            css_classes=["p-2"],
         )
