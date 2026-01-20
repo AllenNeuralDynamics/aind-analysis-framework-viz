@@ -180,11 +180,10 @@ class AINDAnalysisFrameworkApp(BaseApp):
                 self._clear_table_selection()
 
                 # Reset DocDB query to new project's default
+                # With location.sync(), setting widget value will auto-update URL
                 docdb_query_panel = self._components.get("docdb_query")
                 if docdb_query_panel and hasattr(docdb_query_panel, "set_query"):
                     docdb_query_panel.set_query(self._get_default_query())
-                    # Clear docdb_query from URL to avoid confusion
-                    update_url_param("docdb_query", None)
 
             logger.info(f"Project changed to: {project_name}")
 

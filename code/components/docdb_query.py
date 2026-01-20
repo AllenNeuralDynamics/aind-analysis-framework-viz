@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Callable
 import panel as pn
 
 from .base import BaseComponent
-from utils import get_url_param, update_url_param
 
 if TYPE_CHECKING:
     from config import AppConfig
@@ -45,6 +44,7 @@ class DocDBQueryPanel(BaseComponent):
         self.load_data_callback = load_data_callback
         self.get_default_query = get_default_query
         self.docdb_query_widget = None
+        self._url_sync_initialized = False
 
     def get_current_query(self) -> dict | None:
         """
@@ -60,21 +60,25 @@ class DocDBQueryPanel(BaseComponent):
         except json.JSONDecodeError:
             return None
 
-    def set_query(self, query_dict: dict) -> None:
+    def set_query(self, query_dict: dict, update_url: bool = True) -> None:
         """
         Set the query widget value from a dict.
 
         Args:
             query_dict: Query dict to set
+            update_url: If True, also update the URL param (default True).
+                        Set to False to avoid sync loops.
         """
         if self.docdb_query_widget is not None:
+            # Format with indent=2 for display
             self.docdb_query_widget.value = json.dumps(query_dict, indent=2)
 
     def create(self) -> pn.Card:
         """Create the DocDB query panel UI."""
+        # Get default query - this is the initial value before URL sync
         default_query = json.dumps(self.get_default_query(), indent=2)
 
-        docdb_query = pn.widgets.TextAreaInput(
+        self.docdb_query_widget = pn.widgets.TextAreaInput(
             name="DocDB Query (JSON)",
             value=default_query,
             placeholder='e.g., {"subject_id": "778869"}',
@@ -82,17 +86,12 @@ class DocDBQueryPanel(BaseComponent):
             sizing_mode="stretch_width",
         )
 
-        self.docdb_query_widget = docdb_query
-
-        # Read docdb_query from URL on initial load
-        url_query = get_url_param("docdb_query")
-        if url_query:
-            try:
-                query_dict = json.loads(url_query)
-                docdb_query.value = json.dumps(query_dict, indent=2)
-                logger.info(f"Loaded DocDB query from URL: {url_query}")
-            except json.JSONDecodeError as e:
-                logger.warning(f"Invalid docdb_query in URL: {e}")
+        # Bidirectional sync with URL using location.sync()
+        # This syncs the widget value (JSON string) to URL param 'docdb_query'
+        if not self._url_sync_initialized:
+            location = pn.state.location
+            location.sync(self.docdb_query_widget, {"value": "docdb_query"})
+            self._url_sync_initialized = True
 
         reload_button = pn.widgets.Button(
             name="Reload Data",
@@ -115,13 +114,10 @@ class DocDBQueryPanel(BaseComponent):
             status.object = "**Loading data...**"
 
             try:
-                query_str = str(docdb_query.value)
+                query_str = str(self.docdb_query_widget.value)
                 query = json.loads(query_str)
                 result = self.load_data_callback(query)
                 status.object = result
-
-                # Update URL with the query on successful reload
-                update_url_param("docdb_query", json.dumps(query, separators=(",", ":")))
             except json.JSONDecodeError as e:
                 status.object = f"Invalid JSON: {e}"
             finally:
@@ -143,7 +139,7 @@ class DocDBQueryPanel(BaseComponent):
 
         # Wrap the entire panel in a Card, collapsed by default
         query_panel = pn.Card(
-            docdb_query,
+            self.docdb_query_widget,
             pn.Row(reload_button, loading_spinner),
             status,
             examples_card,
