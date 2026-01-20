@@ -189,7 +189,15 @@ class AINDAnalysisFrameworkApp(BaseApp):
             logger.info(f"Project changed to: {project_name}")
 
             # Load data immediately
-            self.load_data()
+            # On initial load, check if docdb_query is in URL
+            if is_initial_load:
+                docdb_query_panel = self._components.get("docdb_query")
+                url_query = None
+                if docdb_query_panel and hasattr(docdb_query_panel, "get_current_query"):
+                    url_query = docdb_query_panel.get_current_query()
+                self.load_data(custom_query=url_query)
+            else:
+                self.load_data()
 
             # On initial load from URL, apply filter if present (preserve selection)
             if is_initial_load and self.data_holder.is_loaded:
