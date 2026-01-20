@@ -107,6 +107,7 @@ class ScatterPlot(BaseComponent):
         location.sync(self.font_size_slider, {"value": "sp_fs"})
         location.sync(self.size_range_slider, {"value": "sp_sr"})
         location.sync(self.size_gamma_slider, {"value": "sp_sg"})
+        location.sync(self.size_uniform_slider, {"value": "sp_su"})
 
     def _init_controls(self) -> None:
         """Initialize control widgets for the scatter plot."""
@@ -138,6 +139,15 @@ class ScatterPlot(BaseComponent):
             width=180,
         )
 
+        self.size_uniform_slider = pn.widgets.IntSlider(
+            name="Point Size",
+            start=scatter_config.min_size,
+            end=scatter_config.max_size,
+            step=1,
+            value=scatter_config.default_size,
+            width=180,
+        )
+
         self.size_range_slider = pn.widgets.RangeSlider(
             name="Size Range",
             start=0,
@@ -154,6 +164,9 @@ class ScatterPlot(BaseComponent):
             value=scatter_config.default_gamma,
             width=180,
         )
+
+        self.size_select.param.watch(self._toggle_size_controls, "value")
+        self._toggle_size_controls(None)
 
         # Color palette selector
         self.palette_select = pn.widgets.Select(
@@ -206,6 +219,13 @@ class ScatterPlot(BaseComponent):
     def _get_all_columns(self, df: pd.DataFrame) -> list[str]:
         """Get list of all columns from DataFrame."""
         return df.columns.tolist()
+
+    def _toggle_size_controls(self, _event) -> None:
+        """Toggle size controls based on size-by selection."""
+        is_uniform = self.size_select.value in ("---", None, "")
+        self.size_uniform_slider.visible = is_uniform
+        self.size_range_slider.visible = not is_uniform
+        self.size_gamma_slider.visible = not is_uniform
 
     def _update_column_options(self, df: pd.DataFrame) -> None:
         """Update dropdown options based on available columns.
@@ -322,6 +342,7 @@ class ScatterPlot(BaseComponent):
         font_size: int,
         size_range: tuple[int, int],
         size_gamma: float,
+        uniform_size: int,
     ):
         """Create the Bokeh scatter plot figure."""
         scatter_config = self.config.scatter_plot
@@ -374,7 +395,7 @@ class ScatterPlot(BaseComponent):
             min_size,
             max_size,
             size_gamma,
-            scatter_config.default_size,
+            uniform_size,
         )
 
         # Prepare data for ColumnDataSource
@@ -451,7 +472,6 @@ class ScatterPlot(BaseComponent):
             alpha=alpha,
             color=color_spec,
             line_color=None,
-            selection_alpha=1.0,
             selection_line_color="black",
             selection_line_width=2,
         )
@@ -517,6 +537,7 @@ class ScatterPlot(BaseComponent):
         font_size: int,
         size_range: tuple[int, int],
         size_gamma: float,
+        uniform_size: int,
     ):
         """Render the scatter plot with current settings."""
         try:
@@ -543,6 +564,7 @@ class ScatterPlot(BaseComponent):
                 font_size,
                 size_range,
                 size_gamma,
+                uniform_size,
             )
         except Exception as e:
             logger.error(f"Error rendering scatter plot: {e}")
@@ -570,13 +592,9 @@ class ScatterPlot(BaseComponent):
             pn.layout.Divider(),
             # Size settings
             self.size_select,
-            pn.Card(
-                self.size_range_slider,
-                self.size_gamma_slider,
-                title="Size settings",
-                collapsed=True,
-                sizing_mode="stretch_width",
-            ),
+            self.size_uniform_slider,
+            self.size_range_slider,
+            self.size_gamma_slider,
             pn.layout.Divider(),
             # Plot settings
             pn.Card(
@@ -608,6 +626,7 @@ class ScatterPlot(BaseComponent):
             font_size=self.font_size_slider,
             size_range=self.size_range_slider,
             size_gamma=self.size_gamma_slider,
+            uniform_size=self.size_uniform_slider,
         )
 
         # Side-by-side layout: controls on left, plot on right
