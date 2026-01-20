@@ -92,6 +92,10 @@ class DocDBQueryPanel(BaseComponent):
         if self.docdb_query_widget is not None:
             self.docdb_query_widget.value = json.dumps(query_dict, indent=2)
             if update_url:
+                print(
+                    "DocDB query URL update:\n"
+                    f"{json.dumps(query_dict, indent=2, sort_keys=True)}"
+                )
                 update_url_param("docdb_query", self._encode_query(query_dict))
 
     def create(self) -> pn.Card:
@@ -129,6 +133,10 @@ class DocDBQueryPanel(BaseComponent):
                 decoded = json.loads(str(event.new))
             except json.JSONDecodeError:
                 return
+            print(
+                "DocDB query URL update:\n"
+                f"{json.dumps(decoded, indent=2, sort_keys=True)}"
+            )
             update_url_param("docdb_query", self._encode_query(decoded))
 
         docdb_query_widget.param.watch(update_url_from_value, "value")
@@ -163,6 +171,10 @@ class DocDBQueryPanel(BaseComponent):
                 result = self.load_data_callback(query)
                 status.object = result
                 self.data_holder.selected_record_ids = []
+                print(
+                    "DocDB query URL update:\n"
+                    f"{json.dumps(query, indent=2, sort_keys=True)}"
+                )
                 update_url_param("docdb_query", self._encode_query(query))
             except json.JSONDecodeError as e:
                 status.object = f"Invalid JSON: {e}"
