@@ -82,11 +82,13 @@ class AINDAnalysisFrameworkApp(BaseApp):
             sizing_mode="stretch_width",
         )
 
-        self.asset_columns_select = pn.widgets.Select(
+        self.asset_columns_select = pn.widgets.IntSlider(
             name="Asset Columns",
-            options=[1, 2, 3, 4],
+            start=1,
+            end=10,
+            step=1,
             value=1,
-            width=120,
+            width=180,
         )
         location = pn.state.location
         if location is not None:
