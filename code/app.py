@@ -194,6 +194,8 @@ class AINDAnalysisFrameworkApp(BaseApp):
                 url_query = None
                 if docdb_query_panel and hasattr(docdb_query_panel, "get_current_query"):
                     url_query = docdb_query_panel.get_current_query()
+                if docdb_query_panel and not get_url_param("docdb_query"):
+                    docdb_query_panel.set_query(self._get_default_query())
                 self.load_data(custom_query=url_query)
             else:
                 self.load_data()

@@ -46,6 +46,7 @@ class DocDBQueryPanel(BaseComponent):
         self.load_data_callback = load_data_callback
         self.get_default_query = get_default_query
         self.docdb_query_widget = None
+        self._syncing_from_url = False
 
     @staticmethod
     def _encode_query(query: dict) -> str:
@@ -96,20 +97,34 @@ class DocDBQueryPanel(BaseComponent):
     def create(self) -> pn.Card:
         """Create the DocDB query panel UI."""
         default_query = json.dumps(self.get_default_query(), indent=2)
-        url_query = get_url_param("docdb_query")
-        decoded_query = self._decode_query(url_query)
-        initial_query = json.dumps(decoded_query, indent=2) if decoded_query else default_query
-
         self.docdb_query_widget = pn.widgets.TextAreaInput(
             name="DocDB Query (JSON)",
-            value=initial_query,
+            value=default_query,
             placeholder='e.g., {"subject_id": "778869"}',
             height=100,
             sizing_mode="stretch_width",
         )
         docdb_query_widget = self.docdb_query_widget
 
+        def apply_url_query(_event=None) -> None:
+            if pn.state.location is None:
+                return
+            url_query = get_url_param("docdb_query")
+            decoded_query = self._decode_query(url_query)
+            if decoded_query is None:
+                return
+            current_query = self.get_current_query()
+            if current_query == decoded_query:
+                return
+            self._syncing_from_url = True
+            try:
+                docdb_query_widget.value = json.dumps(decoded_query, indent=2)
+            finally:
+                self._syncing_from_url = False
+
         def update_url_from_value(event) -> None:
+            if self._syncing_from_url:
+                return
             try:
                 decoded = json.loads(str(event.new))
             except json.JSONDecodeError:
@@ -117,6 +132,10 @@ class DocDBQueryPanel(BaseComponent):
             update_url_param("docdb_query", self._encode_query(decoded))
 
         docdb_query_widget.param.watch(update_url_from_value, "value")
+        location = pn.state.location
+        if location is not None:
+            location.param.watch(apply_url_query, "search")
+        apply_url_query()
 
         reload_button = pn.widgets.Button(
             name="Reload Data",
