@@ -450,6 +450,10 @@ class ScatterPlot(BaseComponent):
             size="size",
             alpha=alpha,
             color=color_spec,
+            line_color=None,
+            selection_alpha=1.0,
+            selection_line_color="black",
+            selection_line_width=2,
         )
 
         # Add hover tool
