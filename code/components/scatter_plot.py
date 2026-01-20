@@ -520,6 +520,14 @@ class ScatterPlot(BaseComponent):
             "hex_dot",
             "triangle_dot",
             "star_dot",
+            "circle_cross",
+            "circle_x",
+            "square_cross",
+            "square_x",
+            "triangle_cross",
+            "diamond_cross",
+            "hex_cross",
+            "asterisk",
         ]
         scatter_renderers = []
 
