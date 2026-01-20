@@ -60,13 +60,21 @@ class ScatterPlot(BaseComponent):
         self._source = None
         self._sources: list[ColumnDataSource] = []
         self._source_ids: list[list[str]] = []
+        self._pending_selection: list[str] | None = None
         self._url_sync_initialized = False
         self._syncing_selection = False
         self.data_holder.param.watch(self._sync_selection_to_source, "selected_record_ids")
 
-    def _apply_source_selection(self, selected_ids: list[str]) -> None:
-        """Update scatter selection to match selected record IDs."""
+    def _apply_source_selection(self, selected_ids: list[str], use_callback: bool = True) -> None:
+        """Update scatter selection to match selected record IDs.
+
+        Args:
+            selected_ids: List of record IDs to select
+            use_callback: If True, schedule via next_tick_callback (for async updates).
+                          If False, set indices directly (for sync during figure creation).
+        """
         if not self._sources:
+            self._pending_selection = list(selected_ids)
             return
         selected_set = set(selected_ids)
 
@@ -74,16 +82,22 @@ class ScatterPlot(BaseComponent):
             self._syncing_selection = True
             try:
                 for source, id_values in zip(self._sources, self._source_ids):
-                    indices = [i for i, record_id in enumerate(id_values) if record_id in selected_set]
+                    indices = [
+                        i for i, record_id in enumerate(id_values) if record_id in selected_set
+                    ]
                     current = list(source.selected.indices or [])
                     if set(current) != set(indices):
                         source.selected.indices = indices
             finally:
                 self._syncing_selection = False
+                self._pending_selection = None
 
-        doc = pn.state.curdoc
-        if doc is not None:
-            doc.add_next_tick_callback(set_indices)
+        if use_callback:
+            doc = pn.state.curdoc
+            if doc is not None:
+                doc.add_next_tick_callback(set_indices)
+            else:
+                set_indices()
         else:
             set_indices()
 
@@ -250,6 +264,15 @@ class ScatterPlot(BaseComponent):
         numeric_cols = self._get_numeric_columns(df)
         all_cols = self._get_all_columns(df)
         scatter_config = self.config.scatter_plot
+        group_cols = []
+        for col in all_cols:
+            series = df[col]
+            try:
+                nunique = series.nunique(dropna=True)
+            except TypeError:
+                nunique = series.astype(str).nunique(dropna=True)
+            if series.dtype == "object" or series.dtype.name == "category" or nunique < 20:
+                group_cols.append(col)
 
         # Track if this is initial setup (options were empty)
         x_was_empty = not self.x_select.options
@@ -262,7 +285,7 @@ class ScatterPlot(BaseComponent):
         self.x_select.options = numeric_cols
         self.y_select.options = numeric_cols
         self.color_select.options = ["---"] + all_cols
-        self.group_select.options = ["---"] + all_cols
+        self.group_select.options = ["---"] + group_cols
         self.size_select.options = ["---"] + numeric_cols
 
         # Set X axis default only if needed
@@ -295,7 +318,7 @@ class ScatterPlot(BaseComponent):
             else:
                 self.color_select.value = "---"
 
-        group_options = ["---"] + all_cols
+        group_options = ["---"] + group_cols
         if (group_was_empty and self.group_select.value in (None, "")) or (
             self.group_select.value not in group_options
         ):
@@ -339,7 +362,7 @@ class ScatterPlot(BaseComponent):
                 '<div style="margin-top: 10px;">'
                 f'<img src="@{{tooltip_image_url}}{{safe}}" '
                 'style="max-width: 500px; height: auto;" '
-                'onerror="this.style.display=\'none\'">'
+                "onerror=\"this.style.display='none'\">"
                 "</div>"
             )
 
@@ -433,9 +456,7 @@ class ScatterPlot(BaseComponent):
                 else ["N/A"] * len(df_valid)
             ),
             "size_col": (
-                df_valid[size_column].astype(str).values
-                if size_column
-                else ["N/A"] * len(df_valid)
+                df_valid[size_column].astype(str).values if size_column else ["N/A"] * len(df_valid)
             ),
         }
 
@@ -510,10 +531,7 @@ class ScatterPlot(BaseComponent):
                 mask = group_values == group
                 if not mask.any():
                     continue
-                group_data = {
-                    key: np.asarray(values)[mask]
-                    for key, values in full_data.items()
-                }
+                group_data = {key: np.asarray(values)[mask] for key, values in full_data.items()}
                 group_source = ColumnDataSource(data=group_data)
                 renderer = p.scatter(
                     x="x",
@@ -575,9 +593,14 @@ class ScatterPlot(BaseComponent):
 
         for source in self._sources:
             source.selected.on_change("indices", on_tap_select)
-        self._apply_source_selection(
-            [str(record_id) for record_id in self.data_holder.selected_record_ids]
-        )
+
+        # Apply selection synchronously during figure creation (use_callback=False)
+        # This ensures selection is set before the figure is returned
+        selected_ids = [str(record_id) for record_id in self.data_holder.selected_record_ids]
+        if selected_ids:
+            self._apply_source_selection(selected_ids, use_callback=False)
+        elif self._pending_selection:
+            self._apply_source_selection(self._pending_selection, use_callback=False)
 
         # Add color bar for continuous mappings
         if color_column:
