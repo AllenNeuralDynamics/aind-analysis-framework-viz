@@ -90,12 +90,21 @@ class AINDAnalysisFrameworkApp(BaseApp):
             value=1,
             width=180,
         )
+        self.asset_highlights_select = pn.widgets.MultiSelect(
+            name="Highlights",
+            options=[],
+            value=[],
+            size=6,
+            width=220,
+        )
         location = pn.state.location
         if location is not None:
             location.sync(self.asset_columns_select, {"value": "asset_cols"})
+            location.sync(self.asset_highlights_select, {"value": "asset_hl"})
 
         # Watch for project changes
         self.project_selector.param.watch(self._on_project_change, "value")
+        self.data_holder.param.watch(self._update_highlight_options, "filtered_df")
 
         # Initialize with first project config (for components), but don't load data
         first_project = list(PROJECT_REGISTRY.keys())[0]
@@ -131,6 +140,16 @@ class AINDAnalysisFrameworkApp(BaseApp):
         )
         self._components["stats_panel"] = StatsPanel(self.data_holder, self.current_config)
         self._components["scatter_plot"] = ScatterPlot(self.data_holder, self.current_config)
+
+    def _update_highlight_options(self, event) -> None:
+        df = event.new
+        if df is None or df.empty:
+            options = []
+        else:
+            options = sorted(df.columns)
+        current = [value for value in self.asset_highlights_select.value if value in options]
+        self.asset_highlights_select.options = options
+        self.asset_highlights_select.value = current
 
     def _on_project_change(self, event):
         """Handle project selection change - loads data immediately."""
@@ -362,6 +381,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
                 df_param=self.data_holder.param.filtered_df,
                 id_column=self.current_config.id_column,
                 columns_param=self.asset_columns_select,
+                highlights_param=self.asset_highlights_select,
             )
 
             count_display = pn.bind(
@@ -394,7 +414,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
                 tabs,
                 pn.layout.Divider(),
                 pn.pane.Markdown("### Selected Record Assets"),
-                pn.Row(self.asset_columns_select),
+                pn.Row(self.asset_columns_select, self.asset_highlights_select),
                 asset_display,
                 sizing_mode="stretch_width",
             )

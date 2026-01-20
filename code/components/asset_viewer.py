@@ -111,6 +111,7 @@ class AssetViewer:
         df_param,
         id_column: str = "_id",
         columns_param=None,
+        highlights_param=None,
     ) -> pn.viewable.Viewable:
         """
         Create a reactive asset viewer for multiple records.
@@ -123,7 +124,7 @@ class AssetViewer:
         Returns:
             Panel Column that updates when selection changes
         """
-        def render_assets(record_ids, df, columns=1):
+        def render_assets(record_ids, df, columns=1, highlights=None):
             if not record_ids or df is None or df.empty:
                 return pn.pane.Markdown(
                     "Select one or more records to view their assets.",
@@ -176,10 +177,28 @@ class AssetViewer:
                     if col in record.index:
                         info_items.append(f"**{col}:** {record[col]}")
 
+                highlight_items = []
+                if highlights:
+                    for col in highlights:
+                        if col in record.index:
+                            value = record[col]
+                            if isinstance(value, (int, float)):
+                                value = f"{value:.3f}"
+                            highlight_items.append(f"**{col}:** {value}")
+
+                subtitle_parts = []
+                if highlight_items:
+                    subtitle_parts.append(
+                        f"<span style=\"color: #c62828;\">{' | '.join(highlight_items)}</span>"
+                    )
+                if info_items:
+                    subtitle_parts.append(" | ".join(info_items))
+                subtitle = "\n\n".join(subtitle_parts) if subtitle_parts else None
+
                 # Add this record's asset panel
                 record_panel = pn.Column(
                     pn.pane.Markdown(f"### Record: {record_id}"),
-                    pn.pane.Markdown(" | ".join(info_items)) if info_items else None,
+                    pn.pane.Markdown(subtitle) if subtitle else None,
                     pn.pane.PNG(asset_url, width=self.width, alt_text=f"Asset for {record_id}"),
                     pn.layout.Divider() if use_divider else None,
                     sizing_mode="stretch_width",
@@ -198,9 +217,17 @@ class AssetViewer:
             return pn.Column(*asset_panels, sizing_mode="stretch_width")
 
         if columns_param is None:
-            return pn.bind(render_assets, record_ids_param, df_param, columns=1)
+            columns_param = 1
+        if highlights_param is None:
+            highlights_param = []
 
-        return pn.bind(render_assets, record_ids_param, df_param, columns=columns_param)
+        return pn.bind(
+            render_assets,
+            record_ids_param,
+            df_param,
+            columns=columns_param,
+            highlights=highlights_param,
+        )
 
 
 def create_image_tooltip(
