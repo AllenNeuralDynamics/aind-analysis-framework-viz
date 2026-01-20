@@ -59,7 +59,9 @@ class AINDAnalysisFrameworkApp(BaseApp):
     _PROJECT_PLACEHOLDER = "-- Select a project --"
 
     # Current project configuration
-    current_config = param.ClassSelector(class_=AppConfig, default=None, doc="Current project config")
+    current_config = param.ClassSelector(
+        class_=AppConfig, default=None, doc="Current project config"
+    )
 
     def __init__(self, **params):
         """
@@ -123,7 +125,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
         project_name = event.new
 
         # Prevent re-entry during project change (avoids URL sync loops)
-        if getattr(self, '_changing_project', False):
+        if getattr(self, "_changing_project", False):
             return
         self._changing_project = True
 
@@ -176,6 +178,13 @@ class AINDAnalysisFrameworkApp(BaseApp):
                 if filter_panel and hasattr(filter_panel, "filter_query_widget"):
                     filter_panel.filter_query_widget.value = ""
                 self._clear_table_selection()
+
+                # Reset DocDB query to new project's default
+                docdb_query_panel = self._components.get("docdb_query")
+                if docdb_query_panel and hasattr(docdb_query_panel, "set_query"):
+                    docdb_query_panel.set_query(self._get_default_query())
+                    # Clear docdb_query from URL to avoid confusion
+                    update_url_param("docdb_query", None)
 
             logger.info(f"Project changed to: {project_name}")
 
@@ -317,6 +326,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
 
     def create_main_content(self) -> pn.viewable.Viewable:
         """Create the main content area."""
+
         def render_content(is_loaded):
             """Render content based on whether data is loaded."""
             if not is_loaded:
@@ -342,11 +352,16 @@ class AINDAnalysisFrameworkApp(BaseApp):
 
             # Create tabs for different views
             tabs = pn.Tabs(
-                ("Data Table", pn.Column(
-                    pn.pane.Markdown("*Click rows to select, or hold Ctrl/Cmd and click for multiple selections*"),
-                    table,
-                    sizing_mode="stretch_width",
-                )),
+                (
+                    "Data Table",
+                    pn.Column(
+                        pn.pane.Markdown(
+                            "*Click rows to select, or hold Ctrl/Cmd and click for multiple selections*"
+                        ),
+                        table,
+                        sizing_mode="stretch_width",
+                    ),
+                ),
                 ("Scatter Plot", scatter_plot),
                 sizing_mode="stretch_width",
             )
@@ -415,8 +430,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
         sidebar_content = self.create_sidebar()
 
         template = pn.template.GoldenTemplate(
-            title=self.current_config.app_title,
-            favicon="static/favicon.svg"
+            title=self.current_config.app_title, favicon="static/favicon.svg"
         )
 
         # Add content to the template
