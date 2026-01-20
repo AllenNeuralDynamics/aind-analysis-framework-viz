@@ -162,6 +162,7 @@ class DocDBQueryPanel(BaseComponent):
                 query = json.loads(query_str)
                 result = self.load_data_callback(query)
                 status.object = result
+                self.data_holder.selected_record_ids = []
                 update_url_param("docdb_query", self._encode_query(query))
             except json.JSONDecodeError as e:
                 status.object = f"Invalid JSON: {e}"
