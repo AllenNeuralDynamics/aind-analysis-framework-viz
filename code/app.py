@@ -82,6 +82,16 @@ class AINDAnalysisFrameworkApp(BaseApp):
             sizing_mode="stretch_width",
         )
 
+        self.asset_columns_select = pn.widgets.Select(
+            name="Asset Columns",
+            options=[1, 2, 3, 4],
+            value=1,
+            width=120,
+        )
+        location = pn.state.location
+        if location is not None:
+            location.sync(self.asset_columns_select, {"value": "asset_cols"})
+
         # Watch for project changes
         self.project_selector.param.watch(self._on_project_change, "value")
 
@@ -349,6 +359,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
                 record_ids_param=self.data_holder.param.selected_record_ids,
                 df_param=self.data_holder.param.filtered_df,
                 id_column=self.current_config.id_column,
+                columns_param=self.asset_columns_select,
             )
 
             count_display = pn.bind(
@@ -381,6 +392,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
                 tabs,
                 pn.layout.Divider(),
                 pn.pane.Markdown("### Selected Record Assets"),
+                pn.Row(self.asset_columns_select),
                 asset_display,
                 sizing_mode="stretch_width",
             )

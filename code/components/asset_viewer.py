@@ -110,7 +110,8 @@ class AssetViewer:
         record_ids_param,
         df_param,
         id_column: str = "_id",
-    ) -> pn.Column:
+        columns_param=None,
+    ) -> pn.viewable.Viewable:
         """
         Create a reactive asset viewer for multiple records.
 
@@ -122,12 +123,15 @@ class AssetViewer:
         Returns:
             Panel Column that updates when selection changes
         """
-        def render_assets(record_ids, df):
+        def render_assets(record_ids, df, columns=1):
             if not record_ids or df is None or df.empty:
                 return pn.pane.Markdown(
                     "Select one or more records to view their assets.",
                     css_classes=["alert", "alert-info", "p-3"],
                 )
+
+            columns = max(1, int(columns or 1))
+            use_divider = columns == 1
 
             # Render assets for all selected records
             asset_panels = []
@@ -173,22 +177,30 @@ class AssetViewer:
                         info_items.append(f"**{col}:** {record[col]}")
 
                 # Add this record's asset panel
-                asset_panels.append(
-                    pn.Column(
-                        pn.pane.Markdown(f"### Record: {record_id}"),
-                        pn.pane.Markdown(" | ".join(info_items)) if info_items else None,
-                        pn.pane.PNG(asset_url, width=self.width, alt_text=f"Asset for {record_id}"),
-                        pn.layout.Divider(),
-                        sizing_mode="stretch_width",
-                    )
+                record_panel = pn.Column(
+                    pn.pane.Markdown(f"### Record: {record_id}"),
+                    pn.pane.Markdown(" | ".join(info_items)) if info_items else None,
+                    pn.pane.PNG(asset_url, width=self.width, alt_text=f"Asset for {record_id}"),
+                    pn.layout.Divider() if use_divider else None,
+                    sizing_mode="stretch_width",
+                )
+                asset_panels.append(record_panel)
+
+            if not asset_panels:
+                return pn.pane.Markdown(
+                    "No assets to display.",
+                    css_classes=["alert", "alert-warning", "p-3"],
                 )
 
-            return pn.Column(*asset_panels, sizing_mode="stretch_width") if asset_panels else pn.pane.Markdown(
-                "No assets to display.",
-                css_classes=["alert", "alert-warning", "p-3"],
-            )
+            if columns > 1:
+                return pn.GridBox(*asset_panels, ncols=columns, sizing_mode="stretch_width")
 
-        return pn.bind(render_assets, record_ids_param, df_param)
+            return pn.Column(*asset_panels, sizing_mode="stretch_width")
+
+        if columns_param is None:
+            return pn.bind(render_assets, record_ids_param, df_param, columns=1)
+
+        return pn.bind(render_assets, record_ids_param, df_param, columns=columns_param)
 
 
 def create_image_tooltip(
