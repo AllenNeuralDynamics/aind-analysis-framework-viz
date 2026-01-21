@@ -15,7 +15,7 @@ import panel as pn
 # Cache settings
 CACHE_MAX_ITEMS = 50
 CACHE_POLICY = "LRU"
-CACHE_TTL = 3600 * 5 # 5 hour TTL to avoid stale data
+CACHE_TTL = 3600 * 24  # 24 hour TTL to avoid stale data
 
 
 class DataLoader(ABC):
