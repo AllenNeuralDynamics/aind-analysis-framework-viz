@@ -6,6 +6,7 @@ for fetching data from various sources (DocDB, custom APIs, etc.).
 """
 
 import json
+import traceback
 from abc import ABC, abstractmethod
 
 import pandas as pd
@@ -99,13 +100,29 @@ class DynamicForagingDataLoader(DataLoader):
         query = json.loads(query_key)
         paginate_settings = json.loads(paginate_settings_key)
 
-        df = get_mle_model_fitting(
-            from_custom_query=query,
-            if_include_metrics=include_metrics,
-            if_include_latent_variables=include_latent_variables,
-            if_download_figures=download_figures,
-            paginate_settings=paginate_settings,
-        )
+        try:
+            df = get_mle_model_fitting(
+                from_custom_query=query,
+                if_include_metrics=include_metrics,
+                if_include_latent_variables=include_latent_variables,
+                if_download_figures=download_figures,
+                paginate_settings=paginate_settings,
+            )
+        except Exception as exc:
+            retry_settings = dict(paginate_settings)
+            retry_settings.setdefault("paginate", True)
+            retry_settings["paginate_batch_size"] = 1000
+            print(
+                "DocDB query failed; retrying with paginate_batch_size=1000: "
+                f"{exc}\n{traceback.format_exc()}"
+            )
+            df = get_mle_model_fitting(
+                from_custom_query=query,
+                if_include_metrics=include_metrics,
+                if_include_latent_variables=include_latent_variables,
+                if_download_figures=download_figures,
+                paginate_settings=retry_settings,
+            )
 
         # Flatten params column if it exists and contains dicts
         if df is not None and "params" in df.columns:
@@ -196,11 +213,25 @@ class GenericDataLoader(DataLoader):
         )
 
         # Query DocDB - get all fields, no projection
-        records = client.retrieve_docdb_records(
-            filter_query=query,
-            projection=None,
-            **paginate_settings,
-        )
+        try:
+            records = client.retrieve_docdb_records(
+                filter_query=query,
+                projection=None,
+                **paginate_settings,
+            )
+        except Exception as exc:
+            retry_settings = dict(paginate_settings)
+            retry_settings.setdefault("paginate", True)
+            retry_settings["paginate_batch_size"] = 1000
+            print(
+                "DocDB query failed; retrying with paginate_batch_size=1000: "
+                f"{exc}\n{traceback.format_exc()}"
+            )
+            records = client.retrieve_docdb_records(
+                filter_query=query,
+                projection=None,
+                **retry_settings,
+            )
 
         if not records:
             return pd.DataFrame()
