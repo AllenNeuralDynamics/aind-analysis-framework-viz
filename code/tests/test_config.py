@@ -39,7 +39,7 @@ class TestDataLoader:
             class IncompleteLoader(DataLoader):
                 pass
 
-            IncompleteLoader()
+            IncompleteLoader()  # type: ignore[abstract]
 
 
 class TestDynamicForagingDataLoader:
@@ -72,14 +72,16 @@ class TestDynamicForagingDataLoader:
         assert loader.download_figures is True
         assert loader.paginate_settings == {"paginate": True, "page_size": 100}
 
+    @patch('aind_analysis_arch_result_access.han_pipeline.get_session_table')
     @patch('aind_analysis_arch_result_access.get_mle_model_fitting')
-    def test_load_calls_get_mle_model_fitting(self, mock_get_mle):
+    def test_load_calls_get_mle_model_fitting(self, mock_get_mle, mock_get_session):
         """Test that load() calls get_mle_model_fitting with correct parameters."""
         from config import DynamicForagingDataLoader
 
         # Setup mock
         mock_df = pd.DataFrame({"_id": [1, 2], "subject_id": ["A", "B"]})
         mock_get_mle.return_value = mock_df
+        mock_get_session.return_value = pd.DataFrame()
 
         # Create loader and load
         loader = DynamicForagingDataLoader(
@@ -98,15 +100,18 @@ class TestDynamicForagingDataLoader:
             if_download_figures=False,
             paginate_settings={"paginate": False},
         )
+        mock_get_session.assert_called_once_with(if_load_bpod=False)
         pd.testing.assert_frame_equal(result, mock_df)
 
+    @patch('aind_analysis_arch_result_access.han_pipeline.get_session_table')
     @patch('aind_analysis_arch_result_access.get_mle_model_fitting')
-    def test_load_with_custom_paginate_settings(self, mock_get_mle):
+    def test_load_with_custom_paginate_settings(self, mock_get_mle, mock_get_session):
         """Test that load() passes custom paginate settings."""
         from config import DynamicForagingDataLoader
 
         mock_df = pd.DataFrame({"_id": [1]})
         mock_get_mle.return_value = mock_df
+        mock_get_session.return_value = pd.DataFrame()
 
         loader = DynamicForagingDataLoader(
             paginate_settings={"paginate": True, "page_size": 50},
@@ -120,6 +125,39 @@ class TestDynamicForagingDataLoader:
             if_download_figures=False,
             paginate_settings={"paginate": True, "page_size": 50},
         )
+        mock_get_session.assert_called_once_with(if_load_bpod=False)
+
+    @patch('aind_analysis_arch_result_access.han_pipeline.get_session_table')
+    @patch('aind_analysis_arch_result_access.get_mle_model_fitting')
+    def test_load_merges_session_table(self, mock_get_mle, mock_get_session):
+        """Test that load() merges session table data with suffixes."""
+        from config import DynamicForagingDataLoader
+
+        mock_df = pd.DataFrame(
+            {
+                "subject_id": ["A"],
+                "session_date": ["2024-01-01"],
+                "value": [1],
+            }
+        )
+        mock_session = pd.DataFrame(
+            {
+                "subject_id": ["A"],
+                "session_date": ["2024-01-01"],
+                "value": [2],
+                "extra": [3],
+            }
+        )
+        mock_get_mle.return_value = mock_df
+        mock_get_session.return_value = mock_session
+
+        loader = DynamicForagingDataLoader()
+        result = loader.load({})
+
+        mock_get_session.assert_called_once_with(if_load_bpod=False)
+        assert "df_session.value" in result.columns
+        assert result.loc[0, "df_session.value"] == 2
+        assert result.loc[0, "df_session.extra"] == 3
 
 
 class TestGenericDataLoader:

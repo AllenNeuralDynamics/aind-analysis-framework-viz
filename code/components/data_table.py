@@ -99,8 +99,13 @@ class DataTable(BaseComponent):
         # Combine default and additional columns
         display_cols = default_cols + additional_cols
 
+        df_display = df[display_cols].copy()
+        datetime_cols = df_display.select_dtypes(include=["datetime"]).columns
+        for column in datetime_cols:
+            df_display[column] = df_display[column].dt.strftime("%Y-%m-%d")
+
         self.table_widget = pn.widgets.Tabulator(
-            df[display_cols],
+            df_display,
             selectable=self.config.data_table.selectable,
             disabled=self.config.data_table.disabled,
             frozen_columns=self.config.data_table.frozen_columns,

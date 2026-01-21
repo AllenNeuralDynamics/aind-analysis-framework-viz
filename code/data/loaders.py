@@ -134,6 +134,10 @@ class DynamicForagingDataLoader(DataLoader):
         if df is None or not isinstance(df, pd.DataFrame) or df.empty:
             return df
 
+        if "session_date" in df.columns:
+            df = df.copy()
+            df["session_date"] = pd.to_datetime(df["session_date"], errors="coerce")
+
         session_table = DynamicForagingDataLoader._load_session_table_cached()
         if session_table is None or not isinstance(session_table, pd.DataFrame) or session_table.empty:
             return df
@@ -144,18 +148,23 @@ class DynamicForagingDataLoader(DataLoader):
         if not all(column in session_table.columns for column in merge_columns):
             return df
 
-        df = df.copy()
         session_table = session_table.copy()
-        df["session_date"] = pd.to_datetime(df["session_date"], errors="coerce")
         session_table["session_date"] = pd.to_datetime(
             session_table["session_date"], errors="coerce"
+        )
+
+        session_table = session_table.rename(
+            columns={
+                column: f"df_session.{column}"
+                for column in session_table.columns
+                if column not in merge_columns
+            }
         )
 
         return df.merge(
             session_table,
             how="left",
             on=merge_columns,
-            suffixes=("", "_df_session"),
         )
 
     @staticmethod
