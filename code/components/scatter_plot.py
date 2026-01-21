@@ -636,6 +636,17 @@ class ScatterPlot(BaseComponent):
         elif self._pending_selection:
             self._apply_source_selection(self._pending_selection, use_callback=False)
 
+        def reapply_selection() -> None:
+            ids = [str(record_id) for record_id in self.data_holder.selected_record_ids]
+            if ids:
+                self._apply_source_selection(ids, use_callback=False)
+            elif self._pending_selection:
+                self._apply_source_selection(self._pending_selection, use_callback=False)
+
+        doc = pn.state.curdoc
+        if doc is not None:
+            doc.add_next_tick_callback(reapply_selection)
+
         # Add color bar for continuous mappings
         if color_column:
             add_color_bar(p, color_mapper, color_column, font_size=font_size)
