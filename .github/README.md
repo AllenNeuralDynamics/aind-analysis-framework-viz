@@ -2,7 +2,7 @@
 
 > **Work in Progress** 🚧
 
-[![HF Spaces](https://img.shields.io/badge/🤗-Live%20Demo-Spaces-blue)](https://hanhou-aind-analysis-framework-viz.hf.space/app)
+[![HF Spaces](https://img.shields.io/badge/Live%20Demo-HF%20Spaces-blue?logo=huggingface)](https://hanhou-aind-analysis-framework-viz.hf.space/app)
 
 A generic, reusable Panel app for exploring AIND (Allen Institute for Neural Dynamics) analysis results across multiple projects.
 
