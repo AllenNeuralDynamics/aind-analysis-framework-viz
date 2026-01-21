@@ -149,6 +149,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
             self.current_config,
             load_data_callback=self.load_data,
             get_default_query=self._get_default_query,
+            clear_cache_callback=self._clear_data_cache,
         )
         self._components["stats_panel"] = StatsPanel(self.data_holder, self.current_config)
         self._components["scatter_plot"] = ScatterPlot(self.data_holder, self.current_config)
@@ -362,6 +363,14 @@ class AINDAnalysisFrameworkApp(BaseApp):
         data_table = self._components.get("data_table")
         if data_table and data_table.table_widget is not None:
             data_table.table_widget.selection = []
+
+    def _clear_data_cache(self) -> None:
+        """Clear cached data in the current loader."""
+        if not self.current_config or not self.current_config.data_loader:
+            return
+        data_loader = self.current_config.data_loader
+        if hasattr(data_loader, "clear_cache"):
+            data_loader.clear_cache()
 
     def create_project_selector(self) -> pn.Column:
         """Create the project selector panel."""

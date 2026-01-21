@@ -31,6 +31,7 @@ class DocDBQueryPanel(BaseComponent):
         config: "AppConfig",
         load_data_callback: Callable[[dict], str],
         get_default_query: Callable[[], dict],
+        clear_cache_callback: Callable[[], None],
     ):
         """
         Initialize the DocDB query panel.
@@ -45,6 +46,7 @@ class DocDBQueryPanel(BaseComponent):
         super().__init__(data_holder, config)
         self.load_data_callback = load_data_callback
         self.get_default_query = get_default_query
+        self.clear_cache_callback = clear_cache_callback
         self.docdb_query_widget = None
         self._syncing_from_url = False
 
@@ -150,6 +152,11 @@ class DocDBQueryPanel(BaseComponent):
             button_type="primary",
             width=120,
         )
+        clear_cache_button = pn.widgets.Button(
+            name="Clear Cache",
+            button_type="light",
+            width=120,
+        )
         status = pn.pane.Markdown("", css_classes=["alert", "alert-info", "p-2"])
 
         # Loading indicator (hidden by default)
@@ -184,6 +191,12 @@ class DocDBQueryPanel(BaseComponent):
 
         reload_button.on_click(reload_callback)
 
+        def clear_cache_callback(_event):
+            self.clear_cache_callback()
+            status.object = "Cache cleared. Reload to fetch fresh data."
+
+        clear_cache_button.on_click(clear_cache_callback)
+
         # Build example queries from config
         examples = "\n**Example queries:**\n"
         for ex in self.config.query.get_example_queries():
@@ -198,7 +211,7 @@ class DocDBQueryPanel(BaseComponent):
         # Wrap the entire panel in a Card, collapsed by default
         query_panel = pn.Card(
             self.docdb_query_widget,
-            pn.Row(reload_button, loading_spinner),
+            pn.Row(reload_button, clear_cache_button, loading_spinner),
             status,
             examples_card,
             title="DocDB Query",
