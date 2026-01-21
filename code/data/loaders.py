@@ -13,9 +13,9 @@ import pandas as pd
 import panel as pn
 
 # Cache settings
-CACHE_MAX_ITEMS = 10
+CACHE_MAX_ITEMS = 50
 CACHE_POLICY = "LRU"
-CACHE_TTL = 3600  # 1 hour TTL to avoid stale data
+CACHE_TTL = 3600 * 5 # 5 hour TTL to avoid stale data
 
 
 class DataLoader(ABC):
@@ -25,6 +25,8 @@ class DataLoader(ABC):
     Each project should implement this interface to provide project-specific
     data loading logic while maintaining a consistent interface for the app.
     """
+
+    _load_cached: object | None = None
 
     @abstractmethod
     def load(self, query: dict) -> pd.DataFrame:
@@ -41,8 +43,9 @@ class DataLoader(ABC):
 
     def clear_cache(self) -> None:
         """Clear the cache for this loader (if applicable)."""
-        if hasattr(self, "_load_cached") and hasattr(self._load_cached, "clear"):
-            self._load_cached.clear()
+        load_cached = getattr(self, "_load_cached", None)
+        if load_cached is not None and hasattr(load_cached, "clear"):
+            load_cached.clear()
 
 
 class DynamicForagingDataLoader(DataLoader):
@@ -128,13 +131,50 @@ class DynamicForagingDataLoader(DataLoader):
         if df is not None and "params" in df.columns:
             df = DynamicForagingDataLoader._flatten_params(df)
 
-        return df
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            return df
+
+        session_table = DynamicForagingDataLoader._load_session_table_cached()
+        if session_table is None or not isinstance(session_table, pd.DataFrame) or session_table.empty:
+            return df
+
+        merge_columns = ["subject_id", "session_date"]
+        if not all(column in df.columns for column in merge_columns):
+            return df
+        if not all(column in session_table.columns for column in merge_columns):
+            return df
+
+        df = df.copy()
+        session_table = session_table.copy()
+        df["session_date"] = pd.to_datetime(df["session_date"], errors="coerce")
+        session_table["session_date"] = pd.to_datetime(
+            session_table["session_date"], errors="coerce"
+        )
+
+        return df.merge(
+            session_table,
+            how="left",
+            on=merge_columns,
+            suffixes=("", "_df_session"),
+        )
+
+    @staticmethod
+    @pn.cache(max_items=CACHE_MAX_ITEMS, policy=CACHE_POLICY, ttl=CACHE_TTL)
+    def _load_session_table_cached() -> pd.DataFrame:
+        from aind_analysis_arch_result_access.han_pipeline import get_session_table
+
+        return get_session_table(if_load_bpod=False)
 
     @staticmethod
     def _flatten_params(df: pd.DataFrame) -> pd.DataFrame:
         """Flatten the params column into separate params.xxx columns."""
-        if df["params"].apply(lambda x: isinstance(x, dict)).any():
-            params_df = pd.json_normalize(df["params"].tolist(), sep=".")
+        params_series = df.get("params")
+        if not isinstance(params_series, pd.Series):
+            return df
+
+        has_dicts: bool = bool(params_series.apply(lambda x: isinstance(x, dict)).any())
+        if has_dicts:
+            params_df = pd.json_normalize(params_series.tolist(), sep=".")
             params_df.columns = [f"params.{col}" for col in params_df.columns]
             df = df.drop(columns=["params"]).join(params_df)
         return df
