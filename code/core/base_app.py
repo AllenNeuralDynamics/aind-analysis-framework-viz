@@ -39,6 +39,7 @@ class DataHolder(param.Parameterized):
     is_loaded = param.Boolean(default=False, doc="Whether data has been loaded")
     load_status = param.String(default="", doc="Status message from data loading")
     additional_columns = param.List(default=[], doc="Additional columns to display beyond defaults")
+    table_height = param.Integer(default=400, doc="Height of the data table")
 
 
 class BaseApp(param.Parameterized):

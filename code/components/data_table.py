@@ -62,6 +62,7 @@ class DataTable(BaseComponent):
             self._render_table,
             df=self.data_holder.param.filtered_df,
             additional_cols=self.data_holder.param.additional_columns,
+            table_height=self.data_holder.param.table_height,
         )
 
     def _get_display_columns(self) -> List[str]:
@@ -72,6 +73,7 @@ class DataTable(BaseComponent):
         self,
         df: pd.DataFrame,
         additional_cols: Optional[List[str]] = None,
+        table_height: Optional[int] = None,
     ) -> pn.viewable.Viewable:
         """
         Render the data table.
@@ -104,6 +106,7 @@ class DataTable(BaseComponent):
         for column in datetime_cols:
             df_display[column] = df_display[column].dt.strftime("%Y-%m-%d")
 
+        height = table_height or self.config.data_table.table_height
         self.table_widget = pn.widgets.Tabulator(
             df_display,
             selectable=self.config.data_table.selectable,
@@ -111,7 +114,7 @@ class DataTable(BaseComponent):
             frozen_columns=self.config.data_table.frozen_columns,
             header_filters=self.config.data_table.header_filters,
             show_index=self.config.data_table.show_index,
-            height=self.config.data_table.table_height,
+            height=int(height),
             sizing_mode="stretch_width",
             stylesheets=[":host .tabulator {font-size: 11px;}"],
         )
