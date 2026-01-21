@@ -240,6 +240,10 @@ class ScatterPlot(BaseComponent):
         """Get list of numeric columns from DataFrame."""
         return df.select_dtypes(include=[np.number]).columns.tolist()
 
+    def _get_xy_columns(self, df: pd.DataFrame) -> list[str]:
+        """Get list of numeric or datetime columns for axes."""
+        return df.select_dtypes(include=[np.number, "datetime"]).columns.tolist()
+
     def _get_all_columns(self, df: pd.DataFrame) -> list[str]:
         """Get list of all columns from DataFrame."""
         return df.columns.tolist()
@@ -262,6 +266,7 @@ class ScatterPlot(BaseComponent):
             return
 
         numeric_cols = self._get_numeric_columns(df)
+        xy_cols = self._get_xy_columns(df)
         all_cols = self._get_all_columns(df)
         scatter_config = self.config.scatter_plot
         group_cols = []
@@ -282,31 +287,31 @@ class ScatterPlot(BaseComponent):
         size_was_empty = len(self.size_select.options) <= 1
 
         # Update options
-        self.x_select.options = numeric_cols
-        self.y_select.options = numeric_cols
+        self.x_select.options = xy_cols
+        self.y_select.options = xy_cols
         self.color_select.options = ["---"] + all_cols
         self.group_select.options = ["---"] + group_cols
         self.size_select.options = ["---"] + numeric_cols
 
         # Set X axis default only if needed
         if (x_was_empty and self.x_select.value in (None, "")) or (
-            self.x_select.value not in numeric_cols
+            self.x_select.value not in xy_cols
         ):
-            if scatter_config.x_column and scatter_config.x_column in numeric_cols:
+            if scatter_config.x_column and scatter_config.x_column in xy_cols:
                 self.x_select.value = scatter_config.x_column
-            elif numeric_cols:
-                self.x_select.value = numeric_cols[0]
+            elif xy_cols:
+                self.x_select.value = xy_cols[0]
 
         # Set Y axis default only if needed
         if (y_was_empty and self.y_select.value in (None, "")) or (
-            self.y_select.value not in numeric_cols
+            self.y_select.value not in xy_cols
         ):
-            if scatter_config.y_column and scatter_config.y_column in numeric_cols:
+            if scatter_config.y_column and scatter_config.y_column in xy_cols:
                 self.y_select.value = scatter_config.y_column
-            elif len(numeric_cols) > 1:
-                self.y_select.value = numeric_cols[1]
-            elif numeric_cols:
-                self.y_select.value = numeric_cols[0]
+            elif len(xy_cols) > 1:
+                self.y_select.value = xy_cols[1]
+            elif xy_cols:
+                self.y_select.value = xy_cols[0]
 
         # Set Color default only if needed
         color_options = ["---"] + all_cols
@@ -441,10 +446,23 @@ class ScatterPlot(BaseComponent):
             uniform_size,
         )
 
+        x_is_datetime = pd.api.types.is_datetime64_any_dtype(df_valid[x_col])
+        y_is_datetime = pd.api.types.is_datetime64_any_dtype(df_valid[y_col])
+        x_values = (
+            pd.to_datetime(df_valid[x_col], errors="coerce").dt.to_pydatetime()
+            if x_is_datetime
+            else df_valid[x_col].values
+        )
+        y_values = (
+            pd.to_datetime(df_valid[y_col], errors="coerce").dt.to_pydatetime()
+            if y_is_datetime
+            else df_valid[y_col].values
+        )
+
         # Prepare data for ColumnDataSource
         source_data = {
-            "x": df_valid[x_col].values,
-            "y": df_valid[y_col].values,
+            "x": x_values,
+            "y": y_values,
             "size": sizes,
             "index": df_valid.index.tolist(),
             self.config.id_column: df_valid[self.config.id_column].astype(str).values,
@@ -494,6 +512,9 @@ class ScatterPlot(BaseComponent):
         self._sources = []
         self._source_ids = []
 
+        x_axis_type = "datetime" if x_is_datetime else "linear"
+        y_axis_type = "datetime" if y_is_datetime else "linear"
+
         # Create figure
         p = figure(
             title=f"{y_col} vs {x_col}",
@@ -501,6 +522,8 @@ class ScatterPlot(BaseComponent):
             y_axis_label=y_col,
             width=int(plot_width),
             height=int(plot_height),
+            x_axis_type=x_axis_type,
+            y_axis_type=y_axis_type,
             tools="pan,wheel_zoom,box_zoom,box_select,lasso_select,reset,tap",
             active_drag="lasso_select",
             active_scroll="wheel_zoom",

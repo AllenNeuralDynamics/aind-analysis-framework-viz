@@ -38,7 +38,7 @@ class ColumnSelector(BaseComponent):
         Returns:
             A Panel binding that renders the selector reactively
         """
-        return pn.bind(
+        return pn.bind(  # type: ignore[return-value]
             self._render_selector,
             df=self.data_holder.param.filtered_df,
         )
@@ -62,10 +62,8 @@ class ColumnSelector(BaseComponent):
 
         # Get available columns (excluding defaults), sorted case-insensitively
         if df is not None and not df.empty:
-            available_cols = sorted(
-                [col for col in df.columns if col not in default_cols],
-                key=str.lower,
-            )
+            available_cols = [col for col in df.columns if col not in default_cols]
+            available_cols = sorted(available_cols, key=self._column_sort_key)
         else:
             available_cols = []
 
@@ -78,7 +76,7 @@ class ColumnSelector(BaseComponent):
             options=available_cols,
             value=initial_value,
             size=min(15, max(5, len(available_cols))),  # Dynamic size based on options
-            sizing_mode="stretch_width",
+            width=560,
         )
 
         # Update data_holder and URL when selection changes
@@ -103,5 +101,11 @@ class ColumnSelector(BaseComponent):
             self.column_selector_widget,
             title="Show additional Columns",
             collapsed=True,
-            sizing_mode="stretch_width",
+            width=580,
         )
+
+    @staticmethod
+    def _column_sort_key(column: str) -> tuple[int, str]:
+        """Sort analysis framework columns before df_session columns."""
+        is_session = column.startswith("df_session.")
+        return (1 if is_session else 0, column.lower())

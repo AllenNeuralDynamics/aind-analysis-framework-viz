@@ -64,6 +64,10 @@ class DataTableConfig:
             "AIC",
             "BIC",
             "pipeline_source",
+            "df_session.PI",
+            "df_session.session",
+            "df_session.curriculum_name",
+            "df_session.current_stage_actual",
         ]
     )
 

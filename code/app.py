@@ -97,10 +97,6 @@ class AINDAnalysisFrameworkApp(BaseApp):
             size=6,
             width=220,
         )
-        location = pn.state.location
-        if location is not None:
-            location.sync(self.asset_columns_select, {"value": "asset_cols"})
-            location.sync(self.asset_highlights_select, {"value": "asset_hl"})
 
         # Watch for project changes
         self.project_selector.param.watch(self._on_project_change, "value")
@@ -109,6 +105,22 @@ class AINDAnalysisFrameworkApp(BaseApp):
         # Initialize with first project config (for components), but don't load data
         first_project = list(PROJECT_REGISTRY.keys())[0]
         self.current_config = PROJECT_REGISTRY[first_project][1]
+        self.data_holder.table_height = self.current_config.data_table.table_height
+
+        self.table_height_slider = pn.widgets.IntSlider(
+            name="Table Height",
+            start=200,
+            end=1200,
+            step=50,
+            value=self.current_config.data_table.table_height,
+            width=240,
+        )
+        self.table_height_slider.param.watch(self._on_table_height_change, "value")
+
+        location = pn.state.location
+        if location is not None:
+            location.sync(self.asset_columns_select, {"value": "asset_cols"})
+            location.sync(self.asset_highlights_select, {"value": "asset_hl"})
         self._init_components()
 
     def _init_components(self):
@@ -169,6 +181,10 @@ class AINDAnalysisFrameworkApp(BaseApp):
         self.asset_highlights_select.options = options
         self.asset_highlights_select.value = current
 
+    def _on_table_height_change(self, event) -> None:
+        """Update table height when slider changes."""
+        self.data_holder.table_height = int(event.new)
+
     def _on_project_change(self, event):
         """Handle project selection change - loads data immediately."""
         project_name = event.new
@@ -201,6 +217,8 @@ class AINDAnalysisFrameworkApp(BaseApp):
 
             _, config = PROJECT_REGISTRY[project_name]
             self.current_config = config
+            self.data_holder.table_height = config.data_table.table_height
+            self.table_height_slider.value = config.data_table.table_height
 
             # Update config in existing components (don't recreate to avoid URL sync issues)
             for component in self._components.values():
@@ -392,6 +410,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
 
             # Data is loaded - show table, scatter plot, and assets
             table = self._components["data_table"].create()
+            column_selector = self._components["column_selector"].create()
             scatter_plot = self._components["scatter_plot"].create()
 
             asset_display = self.asset_viewer.create_viewer(
@@ -415,10 +434,15 @@ class AINDAnalysisFrameworkApp(BaseApp):
                 (
                     "Data Table",
                     pn.Column(
-                        pn.pane.Markdown(
-                            "*Click rows to select, or hold Ctrl/Cmd and click for multiple selections*"
+                        pn.Row(
+                            pn.pane.Markdown(
+                                "*Click rows to select, or hold Ctrl/Cmd and click for multiple selections*"
+                            ),
+                            self.table_height_slider,
+                            sizing_mode="stretch_width",
                         ),
                         table,
+                        column_selector,
                         sizing_mode="stretch_width",
                     ),
                 ),
@@ -455,8 +479,6 @@ class AINDAnalysisFrameworkApp(BaseApp):
         return pn.Column(
             self.create_project_selector(),
             self._components["docdb_query"].create(),  # Collapsed by default, for custom queries
-            pn.layout.Divider(),
-            self._components["column_selector"].create(),
             pn.layout.Divider(),
             self._components["filter_panel"].create(),
             pn.layout.Divider(),
