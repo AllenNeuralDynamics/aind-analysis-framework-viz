@@ -76,7 +76,7 @@ class ColumnSelector(BaseComponent):
             options=available_cols,
             value=initial_value,
             size=min(15, max(5, len(available_cols))),  # Dynamic size based on options
-            sizing_mode="stretch_width",
+            width=560,
         )
 
         # Update data_holder and URL when selection changes
@@ -101,7 +101,7 @@ class ColumnSelector(BaseComponent):
             self.column_selector_widget,
             title="Show additional Columns",
             collapsed=True,
-            sizing_mode="stretch_width",
+            width=580,
         )
 
     @staticmethod

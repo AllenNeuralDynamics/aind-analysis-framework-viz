@@ -392,6 +392,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
 
             # Data is loaded - show table, scatter plot, and assets
             table = self._components["data_table"].create()
+            column_selector = self._components["column_selector"].create()
             scatter_plot = self._components["scatter_plot"].create()
 
             asset_display = self.asset_viewer.create_viewer(
@@ -419,6 +420,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
                             "*Click rows to select, or hold Ctrl/Cmd and click for multiple selections*"
                         ),
                         table,
+                        column_selector,
                         sizing_mode="stretch_width",
                     ),
                 ),
@@ -455,8 +457,6 @@ class AINDAnalysisFrameworkApp(BaseApp):
         return pn.Column(
             self.create_project_selector(),
             self._components["docdb_query"].create(),  # Collapsed by default, for custom queries
-            pn.layout.Divider(),
-            self._components["column_selector"].create(),
             pn.layout.Divider(),
             self._components["filter_panel"].create(),
             pn.layout.Divider(),
