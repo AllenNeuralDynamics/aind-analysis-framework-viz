@@ -105,7 +105,7 @@ class DocDBQueryPanel(BaseComponent):
             name="DocDB Query (JSON)",
             value=default_query,
             placeholder='e.g., {"subject_id": "778869"}',
-            height=100,
+            resizable="height",
             sizing_mode="stretch_width",
         )
         docdb_query_widget = self.docdb_query_widget

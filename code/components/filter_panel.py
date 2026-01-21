@@ -46,7 +46,7 @@ class FilterPanel(BaseComponent):
             name="Pandas Query",
             value="",
             placeholder=self.config.filter.default_placeholder if self.config else "",
-            height=60,
+            resizable="height",
             sizing_mode="stretch_width",
         )
 
