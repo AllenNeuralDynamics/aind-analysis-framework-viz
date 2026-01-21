@@ -58,29 +58,46 @@ class ScatterPlot(BaseComponent):
         self._init_controls()
         self._latest_figure = None
         self._source = None
+        self._sources: list[ColumnDataSource] = []
+        self._source_ids: list[list[str]] = []
+        self._pending_selection: list[str] | None = None
         self._url_sync_initialized = False
         self._syncing_selection = False
         self.data_holder.param.watch(self._sync_selection_to_source, "selected_record_ids")
 
-    def _apply_source_selection(self, selected_ids: list[str]) -> None:
-        """Update scatter selection to match selected record IDs."""
-        if self._source is None:
+    def _apply_source_selection(self, selected_ids: list[str], use_callback: bool = True) -> None:
+        """Update scatter selection to match selected record IDs.
+
+        Args:
+            selected_ids: List of record IDs to select
+            use_callback: If True, schedule via next_tick_callback (for async updates).
+                          If False, set indices directly (for sync during figure creation).
+        """
+        if not self._sources:
+            self._pending_selection = list(selected_ids)
             return
-        id_values = [str(value) for value in self._source.data.get(self.config.id_column, [])]
-        indices = [i for i, record_id in enumerate(id_values) if record_id in selected_ids]
-        current = list(self._source.selected.indices or [])
-        if set(current) == set(indices):
-            return
+        selected_set = set(selected_ids)
+
         def set_indices():
             self._syncing_selection = True
             try:
-                self._source.selected.indices = indices
+                for source, id_values in zip(self._sources, self._source_ids):
+                    indices = [
+                        i for i, record_id in enumerate(id_values) if record_id in selected_set
+                    ]
+                    current = list(source.selected.indices or [])
+                    if set(current) != set(indices):
+                        source.selected.indices = indices
             finally:
                 self._syncing_selection = False
+                self._pending_selection = None
 
-        doc = pn.state.curdoc
-        if doc is not None:
-            doc.add_next_tick_callback(set_indices)
+        if use_callback:
+            doc = pn.state.curdoc
+            if doc is not None:
+                doc.add_next_tick_callback(set_indices)
+            else:
+                set_indices()
         else:
             set_indices()
 
@@ -99,6 +116,7 @@ class ScatterPlot(BaseComponent):
         location.sync(self.x_select, {"value": "sp_x"})
         location.sync(self.y_select, {"value": "sp_y"})
         location.sync(self.color_select, {"value": "sp_color"})
+        location.sync(self.group_select, {"value": "sp_group"})
         location.sync(self.size_select, {"value": "sp_size"})
         location.sync(self.palette_select, {"value": "sp_palette"})
         location.sync(self.alpha_slider, {"value": "sp_alpha"})
@@ -128,6 +146,12 @@ class ScatterPlot(BaseComponent):
         )
         self.color_select = pn.widgets.Select(
             name="Color By",
+            options=["---"],
+            value="---",
+            width=180,
+        )
+        self.group_select = pn.widgets.Select(
+            name="Group By",
             options=["---"],
             value="---",
             width=180,
@@ -240,17 +264,28 @@ class ScatterPlot(BaseComponent):
         numeric_cols = self._get_numeric_columns(df)
         all_cols = self._get_all_columns(df)
         scatter_config = self.config.scatter_plot
+        group_cols = []
+        for col in all_cols:
+            series = df[col]
+            try:
+                nunique = series.nunique(dropna=True)
+            except TypeError:
+                nunique = series.astype(str).nunique(dropna=True)
+            if series.dtype == "object" or series.dtype.name == "category" or nunique < 20:
+                group_cols.append(col)
 
         # Track if this is initial setup (options were empty)
         x_was_empty = not self.x_select.options
         y_was_empty = not self.y_select.options
         color_was_empty = len(self.color_select.options) <= 1  # Only has "---"
+        group_was_empty = len(self.group_select.options) <= 1
         size_was_empty = len(self.size_select.options) <= 1
 
         # Update options
         self.x_select.options = numeric_cols
         self.y_select.options = numeric_cols
         self.color_select.options = ["---"] + all_cols
+        self.group_select.options = ["---"] + group_cols
         self.size_select.options = ["---"] + numeric_cols
 
         # Set X axis default only if needed
@@ -282,6 +317,12 @@ class ScatterPlot(BaseComponent):
                 self.color_select.value = scatter_config.color_column
             else:
                 self.color_select.value = "---"
+
+        group_options = ["---"] + group_cols
+        if (group_was_empty and self.group_select.value in (None, "")) or (
+            self.group_select.value not in group_options
+        ):
+            self.group_select.value = "---"
 
         # Set Size default only if needed
         size_options = ["---"] + numeric_cols
@@ -321,7 +362,7 @@ class ScatterPlot(BaseComponent):
                 '<div style="margin-top: 10px;">'
                 f'<img src="@{{tooltip_image_url}}{{safe}}" '
                 'style="max-width: 500px; height: auto;" '
-                'onerror="this.style.display=\'none\'">'
+                "onerror=\"this.style.display='none'\">"
                 "</div>"
             )
 
@@ -334,6 +375,7 @@ class ScatterPlot(BaseComponent):
         x_col: str,
         y_col: str,
         color_col: str | None,
+        group_col: str | None,
         size_col: str | None,
         palette: str,
         alpha: float,
@@ -374,6 +416,7 @@ class ScatterPlot(BaseComponent):
 
         # Determine color mapping
         color_column = color_col if color_col != "---" else None
+        group_column = group_col if group_col != "---" else None
         color_spec, color_mapper = determine_color_mapping(
             df_valid,
             color_column,
@@ -413,9 +456,7 @@ class ScatterPlot(BaseComponent):
                 else ["N/A"] * len(df_valid)
             ),
             "size_col": (
-                df_valid[size_column].astype(str).values
-                if size_column
-                else ["N/A"] * len(df_valid)
+                df_valid[size_column].astype(str).values if size_column else ["N/A"] * len(df_valid)
             ),
         }
 
@@ -450,6 +491,8 @@ class ScatterPlot(BaseComponent):
                 source_data["tooltip_image_url"] = [""] * len(df_valid)
 
         self._source = ColumnDataSource(data=source_data)
+        self._sources = []
+        self._source_ids = []
 
         # Create figure
         p = figure(
@@ -463,52 +506,122 @@ class ScatterPlot(BaseComponent):
             active_scroll="wheel_zoom",
         )
 
-        # Add scatter points
-        scatter_renderer = p.scatter(
-            x="x",
-            y="y",
-            source=self._source,
-            size="size",
-            alpha=alpha,
-            color=color_spec,
-            line_color=None,
-            selection_line_color="black",
-            selection_line_width=2,
-        )
+        markers = [
+            "circle",
+            "square",
+            "triangle",
+            "inverted_triangle",
+            "diamond",
+            "hex",
+            "star",
+            "plus",
+            "circle_cross",
+            "circle_x",
+            "circle_dot",
+            "square_cross",
+            "square_x",
+            "square_dot",
+            "triangle_cross",
+            "triangle_dot",
+            "triangle_pin",
+            "diamond_cross",
+            "diamond_dot",
+            "hex_cross",
+            "hex_dot",
+            "star_dot",
+        ]
+        scatter_renderers = []
+
+        if group_column and group_column in df_valid.columns:
+            group_values = df_valid[group_column].fillna("N/A").astype(str)
+            unique_groups = list(pd.unique(group_values))
+            full_data = self._source.data
+            for index, group in enumerate(unique_groups):
+                mask = group_values == group
+                if not mask.any():
+                    continue
+                group_data = {key: np.asarray(values)[mask] for key, values in full_data.items()}
+                group_source = ColumnDataSource(data=group_data)
+                renderer = p.scatter(
+                    x="x",
+                    y="y",
+                    source=group_source,
+                    size="size",
+                    alpha=alpha,
+                    color=color_spec,
+                    marker=markers[index % len(markers)],
+                    legend_label=str(group),
+                    line_color="#333333",
+                    line_width=0.5,
+                    selection_line_color="black",
+                    selection_line_width=2,
+                )
+                scatter_renderers.append(renderer)
+                self._sources.append(group_source)
+                self._source_ids.append(
+                    [str(value) for value in group_source.data.get(self.config.id_column, [])]
+                )
+        else:
+            scatter_renderer = p.scatter(
+                x="x",
+                y="y",
+                source=self._source,
+                size="size",
+                alpha=alpha,
+                color=color_spec,
+                line_color="#333333",
+                line_width=0.5,
+                selection_line_color="black",
+                selection_line_width=2,
+            )
+            scatter_renderers.append(scatter_renderer)
+            self._sources.append(self._source)
+            self._source_ids.append(
+                [str(value) for value in self._source.data.get(self.config.id_column, [])]
+            )
 
         # Add hover tool
         hover = HoverTool(
             tooltips=self._build_tooltip_html(),
-            renderers=[scatter_renderer],
+            renderers=scatter_renderers,
             attachment="right",
         )
         p.add_tools(hover)
 
         # Selection callback (handles lasso, box select, and tap)
-        def on_tap_select(_attr, _old, new):
+        def on_tap_select(_attr, _old, _new):
             if self._syncing_selection:
                 return
-            if new:
-                selected_ids = []
-                id_values = self._source.data[self.config.id_column]
-                for idx in new:
+            selected_ids = []
+            for source in self._sources:
+                id_values = source.data.get(self.config.id_column, [])
+                for idx in source.selected.indices or []:
                     if idx < len(id_values):
                         selected_ids.append(str(id_values[idx]))
-                logger.debug(f"Selected records: {selected_ids}")
-                if selected_ids != self.data_holder.selected_record_ids:
-                    self.data_holder.selected_record_ids = selected_ids
-            else:
-                if self.data_holder.selected_record_ids:
-                    self.data_holder.selected_record_ids = []
+            logger.debug(f"Selected records: {selected_ids}")
+            if selected_ids != self.data_holder.selected_record_ids:
+                self.data_holder.selected_record_ids = selected_ids
 
-        self._source.selected.on_change("indices", on_tap_select)
-        self._apply_source_selection(
-            [str(record_id) for record_id in self.data_holder.selected_record_ids]
-        )
+        for source in self._sources:
+            source.selected.on_change("indices", on_tap_select)
+
+        # Apply selection synchronously during figure creation (use_callback=False)
+        # This ensures selection is set before the figure is returned
+        selected_ids = [str(record_id) for record_id in self.data_holder.selected_record_ids]
+        if selected_ids:
+            self._apply_source_selection(selected_ids, use_callback=False)
+        elif self._pending_selection:
+            self._apply_source_selection(self._pending_selection, use_callback=False)
 
         # Add color bar for continuous mappings
         if color_column:
             add_color_bar(p, color_mapper, color_column, font_size=font_size)
+
+        if scatter_renderers and p.legend:
+            legend = p.legend[0]
+            legend.click_policy = "hide"
+            legend.location = "center"
+            p.add_layout(legend, "right")
 
         # Style the plot
         title_size = max(8, int(font_size) + 2)
@@ -529,6 +642,7 @@ class ScatterPlot(BaseComponent):
         x_col: str,
         y_col: str,
         color_col: str,
+        group_col: str,
         size_col: str,
         palette: str,
         alpha: float,
@@ -549,6 +663,7 @@ class ScatterPlot(BaseComponent):
             x_col = self.x_select.value or x_col
             y_col = self.y_select.value or y_col
             color_col = self.color_select.value or color_col
+            group_col = self.group_select.value or group_col
             size_col = self.size_select.value or size_col
 
             return self._create_figure(
@@ -556,6 +671,7 @@ class ScatterPlot(BaseComponent):
                 x_col,
                 y_col,
                 color_col,
+                group_col,
                 size_col,
                 palette,
                 alpha,
@@ -588,6 +704,7 @@ class ScatterPlot(BaseComponent):
             pn.layout.Divider(),
             # Color settings
             self.color_select,
+            self.group_select,
             self.palette_select,
             pn.layout.Divider(),
             # Size settings
@@ -618,6 +735,7 @@ class ScatterPlot(BaseComponent):
             x_col=self.x_select,
             y_col=self.y_select,
             color_col=self.color_select,
+            group_col=self.group_select,
             size_col=self.size_select,
             palette=self.palette_select,
             alpha=self.alpha_slider,

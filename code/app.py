@@ -30,7 +30,7 @@ from config import (
     AppConfig,
 )
 from core.base_app import BaseApp, DataHolder
-from utils import get_url_param, update_url_param
+from utils import get_url_param, get_url_param_list, update_url_param
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -142,12 +142,30 @@ class AINDAnalysisFrameworkApp(BaseApp):
         self._components["scatter_plot"] = ScatterPlot(self.data_holder, self.current_config)
 
     def _update_highlight_options(self, event) -> None:
+        """Update highlight options when filtered_df changes.
+
+        Handles the timing issue where:
+        1. First call may have empty df (options=[]) but widget has URL values
+        2. Second call has real data but widget was cleared by first call
+
+        Solution: Don't clear widget value when options are empty.
+        """
         df = event.new
         if df is None or df.empty:
-            options = []
-        else:
-            options = sorted(df.columns)
-        current = [value for value in self.asset_highlights_select.value if value in options]
+            # Don't update options/value when df is empty - preserve URL-synced values
+            return
+
+        options = sorted(df.columns)
+
+        # Get current widget value, but also check URL if widget is empty
+        # (handles race condition where URL sync hasn't happened yet)
+        current = list(self.asset_highlights_select.value)
+        if not current:
+            # URL sync may not have happened yet, read directly from URL
+            current = get_url_param_list("asset_hl")
+
+        # Filter to valid options
+        current = [value for value in current if value in options]
         self.asset_highlights_select.options = options
         self.asset_highlights_select.value = current
 
