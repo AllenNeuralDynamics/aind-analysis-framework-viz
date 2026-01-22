@@ -131,6 +131,15 @@ class DynamicForagingDataLoader(DataLoader):
         if df is not None and "params" in df.columns:
             df = DynamicForagingDataLoader._flatten_params(df)
 
+        if df is not None and isinstance(df, pd.DataFrame):
+            df = df.apply(
+                lambda series: (
+                    pd.to_numeric(series, errors="ignore") if series.dtype == "object" else series
+                )
+            )
+        if df is not None and "subject_id" in df.columns:
+            df["subject_id"] = df["subject_id"].astype(str)
+
         if df is None or not isinstance(df, pd.DataFrame) or df.empty:
             return df
 
@@ -139,7 +148,11 @@ class DynamicForagingDataLoader(DataLoader):
             df["session_date"] = pd.to_datetime(df["session_date"], errors="coerce")
 
         session_table = DynamicForagingDataLoader._load_session_table_cached()
-        if session_table is None or not isinstance(session_table, pd.DataFrame) or session_table.empty:
+        if (
+            session_table is None
+            or not isinstance(session_table, pd.DataFrame)
+            or session_table.empty
+        ):
             return df
 
         merge_columns = ["subject_id", "session_date"]
@@ -149,6 +162,8 @@ class DynamicForagingDataLoader(DataLoader):
             return df
 
         session_table = session_table.copy()
+        if "subject_id" in session_table.columns:
+            session_table["subject_id"] = session_table["subject_id"].astype(str)
         session_table["session_date"] = pd.to_datetime(
             session_table["session_date"], errors="coerce"
         )

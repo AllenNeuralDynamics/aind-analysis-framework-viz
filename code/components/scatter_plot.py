@@ -279,6 +279,8 @@ class ScatterPlot(BaseComponent):
         group_cols = []
         for col in all_cols:
             series = df[col]
+            if col in {"AIC", "BIC", "log_likelihood"}:
+                print(f"Column {col} dtype: {series.dtype}")
             try:
                 nunique = series.nunique(dropna=True)
             except TypeError:
