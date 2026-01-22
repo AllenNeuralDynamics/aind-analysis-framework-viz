@@ -470,12 +470,12 @@ class ScatterPlot(BaseComponent):
         x_is_datetime = pd.api.types.is_datetime64_any_dtype(df_valid[x_col])
         y_is_datetime = pd.api.types.is_datetime64_any_dtype(df_valid[y_col])
         x_values = (
-            pd.to_datetime(df_valid[x_col], errors="coerce").dt.to_pydatetime()
+            pd.to_datetime(df_valid[x_col], errors="coerce").to_numpy()
             if x_is_datetime
             else df_valid[x_col].values
         )
         y_values = (
-            pd.to_datetime(df_valid[y_col], errors="coerce").dt.to_pydatetime()
+            pd.to_datetime(df_valid[y_col], errors="coerce").to_numpy()
             if y_is_datetime
             else df_valid[y_col].values
         )
