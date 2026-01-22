@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch Panel App",
+            "type": "python",
+            "request": "launch",
+            "module": "panel",
+            "args": ["serve", "app.py", "--dev", "--show"],
+            "justMyCode": true,
+            "cwd": "${workspaceFolder}/code"
+        }
+    ]
+}
