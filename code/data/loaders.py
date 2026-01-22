@@ -114,9 +114,9 @@ class DynamicForagingDataLoader(DataLoader):
         except Exception as exc:
             retry_settings = dict(paginate_settings)
             retry_settings.setdefault("paginate", True)
-            retry_settings["paginate_batch_size"] = 1000
+            retry_settings["paginate_batch_size"] = 10000
             print(
-                "DocDB query failed; retrying with paginate_batch_size=1000: "
+                "DocDB query failed; retrying with paginate_batch_size=10000: "
                 f"{exc}\n{traceback.format_exc()}"
             )
             df = get_mle_model_fitting(
@@ -271,9 +271,9 @@ class GenericDataLoader(DataLoader):
         except Exception as exc:
             retry_settings = dict(paginate_settings)
             retry_settings.setdefault("paginate", True)
-            retry_settings["paginate_batch_size"] = 1000
+            retry_settings["paginate_batch_size"] = 10000
             print(
-                "DocDB query failed; retrying with paginate_batch_size=1000: "
+                "DocDB query failed; retrying with paginate_batch_size=10000: "
                 f"{exc}\n{traceback.format_exc()}"
             )
             records = client.retrieve_docdb_records(
