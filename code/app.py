@@ -20,6 +20,7 @@ from components import (
     DataTable,
     DocDBQueryPanel,
     FilterPanel,
+    LogConsole,
     ScatterPlot,
     StatsPanel,
     get_s3_image_url,
@@ -73,6 +74,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
         super().__init__(**params)
         # BaseApp initializes: self.data_holder, self.df_full, self._components
         self.asset_viewer: AssetViewer = None
+        self.log_console_component = LogConsole()
 
         # Project selector widget with placeholder
         self.project_selector = pn.widgets.Select(
@@ -476,7 +478,6 @@ class AINDAnalysisFrameworkApp(BaseApp):
         """Create sidebar content using extracted components."""
         credits = pn.pane.Markdown(
             (
-                "---\n\n"
                 "🔨 **Built by** Han Hou & Claude Code  \n"
                 f"🏷️ **Version** {app_init.__version__}  \n"
                 "🔗 **Repo** "
@@ -492,8 +493,10 @@ class AINDAnalysisFrameworkApp(BaseApp):
             self._components["filter_panel"].create(),
             pn.layout.Divider(),
             self._components["stats_panel"].create(),
-            pn.Spacer(height=20),
+            pn.layout.Divider(),
             credits,
+            pn.layout.Divider(),
+            self.log_console_component.create(),
             sizing_mode="stretch_width",
         )
 
