@@ -102,9 +102,7 @@ class QueryConfig:
         if self.default_query is not None:
             return self.default_query
 
-        cutoff_date = (datetime.now() - timedelta(days=self.default_days_back)).strftime(
-            "%Y-%m-%d"
-        )
+        cutoff_date = (datetime.now() - timedelta(days=self.default_days_back)).strftime("%Y-%m-%d")
 
         # Support both pipeline formats:
         # - Old (prototype): session_date at root level
@@ -112,11 +110,7 @@ class QueryConfig:
         return {
             "$or": [
                 {"session_date": {"$gte": cutoff_date}},
-                {
-                    "processing.data_processes.output_parameters.session_date": {
-                        "$gte": cutoff_date
-                    }
-                },
+                {"processing.data_processes.output_parameters.session_date": {"$gte": cutoff_date}},
             ]
         }
 
@@ -166,8 +160,8 @@ class ScatterPlotConfig:
     default_gamma: float = 1.0
 
     # Plot dimensions
-    width: int = 600
-    height: int = 500
+    width: int = 1000
+    height: int = 700
     font_size: int = 12
 
     # Available color palettes
@@ -192,6 +186,15 @@ class ScatterPlotConfig:
             "Oranges256",
             "Reds256",
             "Purples256",
+            # Continuous diverging (256)
+            "RdBu",
+            "RdYlBu",
+            "RdYlGn",
+            "Spectral",
+            "PuOr",
+            "PRGn",
+            "BrBG",
+            "PiYG",
         ]
     )
 

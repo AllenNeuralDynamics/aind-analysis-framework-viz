@@ -20,6 +20,7 @@ from components import (
     DataTable,
     DocDBQueryPanel,
     FilterPanel,
+    LogConsole,
     ScatterPlot,
     StatsPanel,
     get_s3_image_url,
@@ -73,6 +74,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
         super().__init__(**params)
         # BaseApp initializes: self.data_holder, self.df_full, self._components
         self.asset_viewer: AssetViewer = None
+        self.log_console_component = LogConsole()
 
         # Project selector widget with placeholder
         self.project_selector = pn.widgets.Select(
@@ -149,6 +151,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
             self.current_config,
             load_data_callback=self.load_data,
             get_default_query=self._get_default_query,
+            clear_cache_callback=self._clear_data_cache,
         )
         self._components["stats_panel"] = StatsPanel(self.data_holder, self.current_config)
         self._components["scatter_plot"] = ScatterPlot(self.data_holder, self.current_config)
@@ -363,6 +366,14 @@ class AINDAnalysisFrameworkApp(BaseApp):
         if data_table and data_table.table_widget is not None:
             data_table.table_widget.selection = []
 
+    def _clear_data_cache(self) -> None:
+        """Clear cached data in the current loader."""
+        if not self.current_config or not self.current_config.data_loader:
+            return
+        data_loader = self.current_config.data_loader
+        if hasattr(data_loader, "clear_cache"):
+            data_loader.clear_cache()
+
     def create_project_selector(self) -> pn.Column:
         """Create the project selector panel."""
         return pn.Column(
@@ -467,7 +478,6 @@ class AINDAnalysisFrameworkApp(BaseApp):
         """Create sidebar content using extracted components."""
         credits = pn.pane.Markdown(
             (
-                "---\n\n"
                 "🔨 **Built by** Han Hou & Claude Code  \n"
                 f"🏷️ **Version** {app_init.__version__}  \n"
                 "🔗 **Repo** "
@@ -483,8 +493,10 @@ class AINDAnalysisFrameworkApp(BaseApp):
             self._components["filter_panel"].create(),
             pn.layout.Divider(),
             self._components["stats_panel"].create(),
-            pn.Spacer(height=20),
+            pn.layout.Divider(),
             credits,
+            pn.layout.Divider(),
+            self.log_console_component.create(),
             sizing_mode="stretch_width",
         )
 

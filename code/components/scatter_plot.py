@@ -117,8 +117,10 @@ class ScatterPlot(BaseComponent):
         location.sync(self.y_select, {"value": "sp_y"})
         location.sync(self.color_select, {"value": "sp_color"})
         location.sync(self.group_select, {"value": "sp_group"})
+        location.sync(self.shape_select, {"value": "sp_shape"})
         location.sync(self.size_select, {"value": "sp_size"})
         location.sync(self.palette_select, {"value": "sp_palette"})
+        location.sync(self.reverse_colors_toggle, {"value": "sp_reverse"})
         location.sync(self.alpha_slider, {"value": "sp_alpha"})
         location.sync(self.width_slider, {"value": "sp_w"})
         location.sync(self.height_slider, {"value": "sp_h"})
@@ -152,6 +154,12 @@ class ScatterPlot(BaseComponent):
         )
         self.group_select = pn.widgets.Select(
             name="Group By",
+            options=["---"],
+            value="---",
+            width=180,
+        )
+        self.shape_select = pn.widgets.Select(
+            name="Shape By",
             options=["---"],
             value="---",
             width=180,
@@ -199,6 +207,14 @@ class ScatterPlot(BaseComponent):
             value=scatter_config.color_palettes[0],
             width=180,
         )
+        self.reverse_colors_toggle = pn.widgets.Toggle(
+            name="Reverse colors",
+            value=False,
+            button_type="light",
+            width=180,
+        )
+        self.color_select.param.watch(self._toggle_color_controls, "value")
+        self._toggle_color_controls(None)
 
         # Alpha slider
         self.alpha_slider = pn.widgets.FloatSlider(
@@ -255,6 +271,12 @@ class ScatterPlot(BaseComponent):
         self.size_range_slider.visible = not is_uniform
         self.size_gamma_slider.visible = not is_uniform
 
+    def _toggle_color_controls(self, _event) -> None:
+        """Toggle palette controls based on color-by selection."""
+        show_controls = self.color_select.value not in ("---", None, "")
+        self.palette_select.visible = show_controls
+        self.reverse_colors_toggle.visible = show_controls
+
     def _update_column_options(self, df: pd.DataFrame) -> None:
         """Update dropdown options based on available columns.
 
@@ -276,7 +298,7 @@ class ScatterPlot(BaseComponent):
                 nunique = series.nunique(dropna=True)
             except TypeError:
                 nunique = series.astype(str).nunique(dropna=True)
-            if series.dtype == "object" or series.dtype.name == "category" or nunique < 20:
+            if nunique < 30:
                 group_cols.append(col)
 
         # Track if this is initial setup (options were empty)
@@ -284,6 +306,7 @@ class ScatterPlot(BaseComponent):
         y_was_empty = not self.y_select.options
         color_was_empty = len(self.color_select.options) <= 1  # Only has "---"
         group_was_empty = len(self.group_select.options) <= 1
+        shape_was_empty = len(self.shape_select.options) <= 1
         size_was_empty = len(self.size_select.options) <= 1
 
         # Update options
@@ -291,6 +314,7 @@ class ScatterPlot(BaseComponent):
         self.y_select.options = xy_cols
         self.color_select.options = ["---"] + all_cols
         self.group_select.options = ["---"] + group_cols
+        self.shape_select.options = ["---"] + group_cols
         self.size_select.options = ["---"] + numeric_cols
 
         # Set X axis default only if needed
@@ -322,12 +346,19 @@ class ScatterPlot(BaseComponent):
                 self.color_select.value = scatter_config.color_column
             else:
                 self.color_select.value = "---"
+        self._toggle_color_controls(None)
 
         group_options = ["---"] + group_cols
         if (group_was_empty and self.group_select.value in (None, "")) or (
             self.group_select.value not in group_options
         ):
             self.group_select.value = "---"
+
+        shape_options = ["---"] + group_cols
+        if (shape_was_empty and self.shape_select.value in (None, "")) or (
+            self.shape_select.value not in shape_options
+        ):
+            self.shape_select.value = "---"
 
         # Set Size default only if needed
         size_options = ["---"] + numeric_cols
@@ -346,7 +377,7 @@ class ScatterPlot(BaseComponent):
 
         # Basic info tooltip
         tooltip_parts = [
-            '<div style="max-width: 600px; padding: 10px; background: white; '
+            '<div style="max-width: 900px; padding: 10px; background: white; '
             'border: 1px solid #ccc; border-radius: 4px;">',
             f'<div style="font-weight: bold; margin-bottom: 5px;">@{{{id_col}}}</div>',
             '<div style="font-size: 12px; color: #666;">',
@@ -366,7 +397,7 @@ class ScatterPlot(BaseComponent):
             tooltip_parts.append(
                 '<div style="margin-top: 10px;">'
                 f'<img src="@{{tooltip_image_url}}{{safe}}" '
-                'style="max-width: 500px; height: auto;" '
+                'style="max-width: 700px; height: auto;" '
                 "onerror=\"this.style.display='none'\">"
                 "</div>"
             )
@@ -381,8 +412,10 @@ class ScatterPlot(BaseComponent):
         y_col: str,
         color_col: str | None,
         group_col: str | None,
+        shape_col: str | None,
         size_col: str | None,
         palette: str,
+        reverse_colors: bool,
         alpha: float,
         plot_width: int,
         plot_height: int,
@@ -422,11 +455,13 @@ class ScatterPlot(BaseComponent):
         # Determine color mapping
         color_column = color_col if color_col != "---" else None
         group_column = group_col if group_col != "---" else None
+        shape_column = shape_col if shape_col != "---" else None
         color_spec, color_mapper = determine_color_mapping(
             df_valid,
             color_column,
             palette,
             scatter_config.max_categorical_values,
+            reverse_colors,
         )  # Now uses intelligent palette selection from all_palettes
 
         # Determine size mapping
@@ -449,12 +484,12 @@ class ScatterPlot(BaseComponent):
         x_is_datetime = pd.api.types.is_datetime64_any_dtype(df_valid[x_col])
         y_is_datetime = pd.api.types.is_datetime64_any_dtype(df_valid[y_col])
         x_values = (
-            pd.to_datetime(df_valid[x_col], errors="coerce").dt.to_pydatetime()
+            pd.to_datetime(df_valid[x_col], errors="coerce").to_numpy()
             if x_is_datetime
             else df_valid[x_col].values
         )
         y_values = (
-            pd.to_datetime(df_valid[y_col], errors="coerce").dt.to_pydatetime()
+            pd.to_datetime(df_valid[y_col], errors="coerce").to_numpy()
             if y_is_datetime
             else df_valid[y_col].values
         )
@@ -508,10 +543,6 @@ class ScatterPlot(BaseComponent):
             else:
                 source_data["tooltip_image_url"] = [""] * len(df_valid)
 
-        self._source = ColumnDataSource(data=source_data)
-        self._sources = []
-        self._source_ids = []
-
         x_axis_type = "datetime" if x_is_datetime else "linear"
         y_axis_type = "datetime" if y_is_datetime else "linear"
 
@@ -544,16 +575,52 @@ class ScatterPlot(BaseComponent):
             "square_cross",
             "square_x",
             "square_dot",
-            "triangle_cross",
             "triangle_dot",
             "triangle_pin",
             "diamond_cross",
             "diamond_dot",
-            "hex_cross",
             "hex_dot",
             "star_dot",
+            "asterisk",
+            "cross",
+            "dash",
+            "dot",
+            "square_pin",
+            "x",
+            "y",
         ]
+        if shape_column and shape_column in df_valid.columns:
+            shape_values = df_valid[shape_column].fillna("N/A").astype(str)
+            unique_shapes = list(pd.unique(shape_values))
+            shape_map = {
+                value: markers[index % len(markers)] for index, value in enumerate(unique_shapes)
+            }
+            source_data[shape_column] = shape_values.values
+            source_data["marker"] = shape_values.map(shape_map).values
+        elif group_column and group_column in df_valid.columns:
+            group_values = df_valid[group_column].fillna("N/A").astype(str)
+            unique_groups = list(pd.unique(group_values))
+            group_map = {
+                value: markers[index % len(markers)] for index, value in enumerate(unique_groups)
+            }
+            source_data[group_column] = group_values.values
+            source_data["marker"] = group_values.map(group_map).values
+        else:
+            source_data["marker"] = ["circle"] * len(df_valid)
         scatter_renderers = []
+
+        shape_legend = []
+        if (
+            shape_column
+            and shape_column in df_valid.columns
+            and group_column
+            and group_column in df_valid.columns
+        ):
+            shape_legend = [(shape, shape_map[shape]) for shape in unique_shapes]
+
+        self._source = ColumnDataSource(data=source_data)
+        self._sources = []
+        self._source_ids = []
 
         if group_column and group_column in df_valid.columns:
             group_values = df_valid[group_column].fillna("N/A").astype(str)
@@ -572,7 +639,7 @@ class ScatterPlot(BaseComponent):
                     size="size",
                     alpha=alpha,
                     color=color_spec,
-                    marker=markers[index % len(markers)],
+                    marker="marker",
                     legend_label=str(group),
                     line_color="#333333",
                     line_width=0.5,
@@ -585,6 +652,10 @@ class ScatterPlot(BaseComponent):
                     [str(value) for value in group_source.data.get(self.config.id_column, [])]
                 )
         else:
+            scatter_kwargs = {}
+            if shape_column and shape_column in df_valid.columns:
+                scatter_kwargs["legend_field"] = shape_column
+
             scatter_renderer = p.scatter(
                 x="x",
                 y="y",
@@ -592,16 +663,31 @@ class ScatterPlot(BaseComponent):
                 size="size",
                 alpha=alpha,
                 color=color_spec,
+                marker="marker",
                 line_color="#333333",
                 line_width=0.5,
                 selection_line_color="black",
                 selection_line_width=2,
+                **scatter_kwargs,
             )
             scatter_renderers.append(scatter_renderer)
             self._sources.append(self._source)
             self._source_ids.append(
                 [str(value) for value in self._source.data.get(self.config.id_column, [])]
             )
+
+        if shape_legend:
+            for shape_label, shape_marker in shape_legend:
+                legend_renderer = p.scatter(
+                    x=[np.nan],
+                    y=[np.nan],
+                    marker=shape_marker,
+                    size=14,
+                    color="#666666",
+                    alpha=0.8,
+                    legend_label=str(shape_label),
+                )
+                scatter_renderers.append(legend_renderer)
 
         # Add hover tool
         hover = HoverTool(
@@ -636,6 +722,17 @@ class ScatterPlot(BaseComponent):
         elif self._pending_selection:
             self._apply_source_selection(self._pending_selection, use_callback=False)
 
+        def reapply_selection() -> None:
+            ids = [str(record_id) for record_id in self.data_holder.selected_record_ids]
+            if ids:
+                self._apply_source_selection(ids, use_callback=False)
+            elif self._pending_selection:
+                self._apply_source_selection(self._pending_selection, use_callback=False)
+
+        doc = pn.state.curdoc
+        if doc is not None:
+            doc.add_next_tick_callback(reapply_selection)
+
         # Add color bar for continuous mappings
         if color_column:
             add_color_bar(p, color_mapper, color_column, font_size=font_size)
@@ -666,8 +763,10 @@ class ScatterPlot(BaseComponent):
         y_col: str,
         color_col: str,
         group_col: str,
+        shape_col: str,
         size_col: str,
         palette: str,
+        reverse_colors: bool,
         alpha: float,
         plot_width: int,
         plot_height: int,
@@ -687,7 +786,12 @@ class ScatterPlot(BaseComponent):
             y_col = self.y_select.value or y_col
             color_col = self.color_select.value or color_col
             group_col = self.group_select.value or group_col
+            shape_col = self.shape_select.value or shape_col
             size_col = self.size_select.value or size_col
+
+            plot_width = int(plot_width)
+            if group_col not in (None, "", "---") or shape_col not in (None, "", "---"):
+                plot_width += 300
 
             return self._create_figure(
                 df,
@@ -695,8 +799,10 @@ class ScatterPlot(BaseComponent):
                 y_col,
                 color_col,
                 group_col,
+                shape_col,
                 size_col,
                 palette,
+                reverse_colors,
                 alpha,
                 plot_width,
                 plot_height,
@@ -727,8 +833,8 @@ class ScatterPlot(BaseComponent):
             pn.layout.Divider(),
             # Color settings
             self.color_select,
-            self.group_select,
             self.palette_select,
+            self.reverse_colors_toggle,
             pn.layout.Divider(),
             # Size settings
             self.size_select,
@@ -736,13 +842,18 @@ class ScatterPlot(BaseComponent):
             self.size_range_slider,
             self.size_gamma_slider,
             pn.layout.Divider(),
+            # Shape settings
+            self.shape_select,
+            pn.layout.Divider(),
+            self.group_select,
+            pn.layout.Divider(),
             # Plot settings
             pn.Card(
                 self.alpha_slider,
                 self.width_slider,
                 self.height_slider,
                 self.font_size_slider,
-                title="Plot settings",
+                title="More settings",
                 collapsed=True,
                 sizing_mode="stretch_width",
             ),
@@ -759,8 +870,10 @@ class ScatterPlot(BaseComponent):
             y_col=self.y_select,
             color_col=self.color_select,
             group_col=self.group_select,
+            shape_col=self.shape_select,
             size_col=self.size_select,
             palette=self.palette_select,
+            reverse_colors=self.reverse_colors_toggle,
             alpha=self.alpha_slider,
             plot_width=self.width_slider,
             plot_height=self.height_slider,
