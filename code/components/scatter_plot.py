@@ -789,6 +789,10 @@ class ScatterPlot(BaseComponent):
             shape_col = self.shape_select.value or shape_col
             size_col = self.size_select.value or size_col
 
+            plot_width = int(plot_width)
+            if group_col not in (None, "", "---") or shape_col not in (None, "", "---"):
+                plot_width += 300
+
             return self._create_figure(
                 df,
                 x_col,
