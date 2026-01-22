@@ -279,17 +279,11 @@ class ScatterPlot(BaseComponent):
         group_cols = []
         for col in all_cols:
             series = df[col]
-            if col in {"AIC", "BIC", "log_likelihood"}:
-                print(f"Column {col} dtype: {series.dtype}")
             try:
                 nunique = series.nunique(dropna=True)
             except TypeError:
                 nunique = series.astype(str).nunique(dropna=True)
-            is_categorical = series.dtype == "object" or series.dtype.name == "category"
-            is_numeric = pd.api.types.is_numeric_dtype(series)
-            if is_numeric and nunique < 20:
-                group_cols.append(col)
-            elif is_categorical:
+            if nunique < 30:
                 group_cols.append(col)
 
         # Track if this is initial setup (options were empty)
