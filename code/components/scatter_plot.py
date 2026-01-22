@@ -365,7 +365,7 @@ class ScatterPlot(BaseComponent):
 
         # Basic info tooltip
         tooltip_parts = [
-            '<div style="max-width: 600px; padding: 10px; background: white; '
+            '<div style="max-width: 900px; padding: 10px; background: white; '
             'border: 1px solid #ccc; border-radius: 4px;">',
             f'<div style="font-weight: bold; margin-bottom: 5px;">@{{{id_col}}}</div>',
             '<div style="font-size: 12px; color: #666;">',
@@ -385,7 +385,7 @@ class ScatterPlot(BaseComponent):
             tooltip_parts.append(
                 '<div style="margin-top: 10px;">'
                 f'<img src="@{{tooltip_image_url}}{{safe}}" '
-                'style="max-width: 500px; height: auto;" '
+                'style="max-width: 700px; height: auto;" '
                 "onerror=\"this.style.display='none'\">"
                 "</div>"
             )
@@ -579,8 +579,7 @@ class ScatterPlot(BaseComponent):
             shape_values = df_valid[shape_column].fillna("N/A").astype(str)
             unique_shapes = list(pd.unique(shape_values))
             shape_map = {
-                value: markers[index % len(markers)]
-                for index, value in enumerate(unique_shapes)
+                value: markers[index % len(markers)] for index, value in enumerate(unique_shapes)
             }
             source_data[shape_column] = shape_values.values
             source_data["marker"] = shape_values.map(shape_map).values
@@ -588,8 +587,7 @@ class ScatterPlot(BaseComponent):
             group_values = df_valid[group_column].fillna("N/A").astype(str)
             unique_groups = list(pd.unique(group_values))
             group_map = {
-                value: markers[index % len(markers)]
-                for index, value in enumerate(unique_groups)
+                value: markers[index % len(markers)] for index, value in enumerate(unique_groups)
             }
             source_data[group_column] = group_values.values
             source_data["marker"] = group_values.map(group_map).values
@@ -670,7 +668,7 @@ class ScatterPlot(BaseComponent):
                     x=[np.nan],
                     y=[np.nan],
                     marker=shape_marker,
-                    size=10,
+                    size=14,
                     color="#666666",
                     alpha=0.8,
                     legend_label=str(shape_label),
@@ -834,7 +832,7 @@ class ScatterPlot(BaseComponent):
                 self.width_slider,
                 self.height_slider,
                 self.font_size_slider,
-                title="Plot settings",
+                title="More settings",
                 collapsed=True,
                 sizing_mode="stretch_width",
             ),

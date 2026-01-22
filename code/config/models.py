@@ -166,8 +166,8 @@ class ScatterPlotConfig:
     default_gamma: float = 1.0
 
     # Plot dimensions
-    width: int = 600
-    height: int = 500
+    width: int = 1000
+    height: int = 700
     font_size: int = 12
 
     # Available color palettes
