@@ -33,8 +33,16 @@ from bokeh.plotting import figure as Figure
 
 # Special values that should be colored gray
 GRAY_VALUES = {
-    "None", "none", "unknown", "Unknown", "N/A", "NA", "nan", "NaN",
-    "seq_data_not_available", ""
+    "None",
+    "none",
+    "unknown",
+    "Unknown",
+    "N/A",
+    "NA",
+    "nan",
+    "NaN",
+    "seq_data_not_available",
+    "",
 }
 
 # Named palette map for quick access
@@ -78,6 +86,29 @@ def get_palette(palette_name: str) -> list[str]:
 
     # Fallback to Category10
     return Category10[10]
+
+
+def _hex_to_rgb(color: str) -> tuple[int, int, int]:
+    color = color.lstrip("#")
+    return tuple(int(color[i : i + 2], 16) for i in (0, 2, 4))
+
+
+def _rgb_to_hex(rgb: tuple[int, int, int]) -> str:
+    return "#{:02x}".format(rgb[0]) + "{:02x}".format(rgb[1]) + "{:02x}".format(rgb[2])
+
+
+def _interpolate_palette(palette: list[str], n_colors: int = 256) -> list[str]:
+    if len(palette) >= n_colors:
+        return palette[:n_colors]
+
+    rgb = np.array([_hex_to_rgb(color) for color in palette], dtype=float)
+    base_positions = np.linspace(0, 1, len(palette))
+    target_positions = np.linspace(0, 1, n_colors)
+    channels = []
+    for channel in range(3):
+        channels.append(np.interp(target_positions, base_positions, rgb[:, channel]))
+    interp_rgb = np.stack(channels, axis=1).round().astype(int)
+    return [_rgb_to_hex(tuple(values)) for values in interp_rgb]
 
 
 def _select_categorical_palette(palette_name: str, n_categories: int) -> list[str]:
@@ -131,6 +162,7 @@ def determine_color_mapping(
     color_column: str | None,
     palette_name: str = "Category10",
     max_categorical: int = 50,
+    reverse: bool = False,
 ) -> tuple[dict, CategoricalColorMapper | LinearColorMapper | None]:
     """Determine appropriate color mapping based on data characteristics.
 
@@ -159,19 +191,17 @@ def determine_color_mapping(
 
     # Determine if categorical or continuous
     is_categorical = (
-        n_unique <= max_categorical
-        or series.dtype == "object"
-        or series.dtype.name == "category"
+        n_unique <= max_categorical or series.dtype == "object" or series.dtype.name == "category"
     )
 
     if is_categorical:
-        return _create_categorical_mapping(series, palette_name)
+        return _create_categorical_mapping(series, palette_name, reverse)
     else:
-        return _create_continuous_mapping(series, palette_name)
+        return _create_continuous_mapping(series, palette_name, reverse)
 
 
 def _create_categorical_mapping(
-    series: pd.Series, palette_name: str
+    series: pd.Series, palette_name: str, reverse: bool
 ) -> tuple[dict, CategoricalColorMapper]:
     """Create categorical color mapping with intelligent palette selection.
 
@@ -195,6 +225,8 @@ def _create_categorical_mapping(
 
     # Select appropriate palette (already uniformly sampled for continuous palettes)
     palette = _select_categorical_palette(palette_name, len(factors))
+    if reverse:
+        palette = list(reversed(palette))
 
     # Assign colors to factors, overriding gray for special values
     colors = []
@@ -216,7 +248,7 @@ def _create_categorical_mapping(
 
 
 def _create_continuous_mapping(
-    series: pd.Series, palette_name: str
+    series: pd.Series, palette_name: str, reverse: bool
 ) -> tuple[dict, LinearColorMapper]:
     """Create continuous color mapping using percentile range.
 
@@ -240,9 +272,13 @@ def _create_continuous_mapping(
     if palette_name in all_palettes:
         palette_dict = all_palettes[palette_name]
         max_key = max(palette_dict.keys())
-        continuous_palette = palette_dict[max_key]
+        base_palette = palette_dict[max_key]
+        continuous_palette = _interpolate_palette(base_palette, 256)
     else:
-        continuous_palette = get_palette(palette_name)
+        continuous_palette = _interpolate_palette(get_palette(palette_name), 256)
+
+    if reverse:
+        continuous_palette = list(reversed(continuous_palette))
 
     mapper = LinearColorMapper(
         palette=continuous_palette,

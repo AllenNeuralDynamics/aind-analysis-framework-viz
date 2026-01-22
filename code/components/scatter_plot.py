@@ -120,6 +120,7 @@ class ScatterPlot(BaseComponent):
         location.sync(self.shape_select, {"value": "sp_shape"})
         location.sync(self.size_select, {"value": "sp_size"})
         location.sync(self.palette_select, {"value": "sp_palette"})
+        location.sync(self.reverse_colors_toggle, {"value": "sp_reverse"})
         location.sync(self.alpha_slider, {"value": "sp_alpha"})
         location.sync(self.width_slider, {"value": "sp_w"})
         location.sync(self.height_slider, {"value": "sp_h"})
@@ -206,6 +207,14 @@ class ScatterPlot(BaseComponent):
             value=scatter_config.color_palettes[0],
             width=180,
         )
+        self.reverse_colors_toggle = pn.widgets.Toggle(
+            name="Reverse colors",
+            value=False,
+            button_type="light",
+            width=180,
+        )
+        self.color_select.param.watch(self._toggle_color_controls, "value")
+        self._toggle_color_controls(None)
 
         # Alpha slider
         self.alpha_slider = pn.widgets.FloatSlider(
@@ -261,6 +270,12 @@ class ScatterPlot(BaseComponent):
         self.size_uniform_slider.visible = is_uniform
         self.size_range_slider.visible = not is_uniform
         self.size_gamma_slider.visible = not is_uniform
+
+    def _toggle_color_controls(self, _event) -> None:
+        """Toggle palette controls based on color-by selection."""
+        show_controls = self.color_select.value not in ("---", None, "")
+        self.palette_select.visible = show_controls
+        self.reverse_colors_toggle.visible = show_controls
 
     def _update_column_options(self, df: pd.DataFrame) -> None:
         """Update dropdown options based on available columns.
@@ -331,6 +346,7 @@ class ScatterPlot(BaseComponent):
                 self.color_select.value = scatter_config.color_column
             else:
                 self.color_select.value = "---"
+        self._toggle_color_controls(None)
 
         group_options = ["---"] + group_cols
         if (group_was_empty and self.group_select.value in (None, "")) or (
@@ -399,6 +415,7 @@ class ScatterPlot(BaseComponent):
         shape_col: str | None,
         size_col: str | None,
         palette: str,
+        reverse_colors: bool,
         alpha: float,
         plot_width: int,
         plot_height: int,
@@ -444,6 +461,7 @@ class ScatterPlot(BaseComponent):
             color_column,
             palette,
             scatter_config.max_categorical_values,
+            reverse_colors,
         )  # Now uses intelligent palette selection from all_palettes
 
         # Determine size mapping
@@ -748,6 +766,7 @@ class ScatterPlot(BaseComponent):
         shape_col: str,
         size_col: str,
         palette: str,
+        reverse_colors: bool,
         alpha: float,
         plot_width: int,
         plot_height: int,
@@ -779,6 +798,7 @@ class ScatterPlot(BaseComponent):
                 shape_col,
                 size_col,
                 palette,
+                reverse_colors,
                 alpha,
                 plot_width,
                 plot_height,
@@ -810,6 +830,7 @@ class ScatterPlot(BaseComponent):
             # Color settings
             self.color_select,
             self.palette_select,
+            self.reverse_colors_toggle,
             pn.layout.Divider(),
             # Size settings
             self.size_select,
@@ -848,6 +869,7 @@ class ScatterPlot(BaseComponent):
             shape_col=self.shape_select,
             size_col=self.size_select,
             palette=self.palette_select,
+            reverse_colors=self.reverse_colors_toggle,
             alpha=self.alpha_slider,
             plot_width=self.width_slider,
             plot_height=self.height_slider,
