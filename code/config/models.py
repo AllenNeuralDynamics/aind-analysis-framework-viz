@@ -90,6 +90,9 @@ class QueryConfig:
     default_days_back: int = 90
     # Optional override for default query (if None, uses get_default_query())
     default_query: dict | None = None
+    # Optional list of DocDB date field paths to apply the days-back filter to.
+    # If provided, get_default_query() will build an $or across these paths.
+    date_field_paths: list[str] | None = None
 
     def get_default_query(self) -> dict:
         """
@@ -104,15 +107,15 @@ class QueryConfig:
 
         cutoff_date = (datetime.now() - timedelta(days=self.default_days_back)).strftime("%Y-%m-%d")
 
-        # Support both pipeline formats:
-        # - Old (prototype): session_date at root level
-        # - New (AIND Analysis Framework): session_date nested in processing.data_processes
-        return {
-            "$or": [
-                {"session_date": {"$gte": cutoff_date}},
-                {"processing.data_processes.output_parameters.session_date": {"$gte": cutoff_date}},
-            ]
-        }
+        date_fields = self.date_field_paths or [
+            # Support both pipeline formats:
+            # - Old (prototype): session_date at root level
+            # - New (AIND Analysis Framework): session_date nested in processing.data_processes
+            "session_date",
+            "processing.data_processes.output_parameters.session_date",
+        ]
+
+        return {"$or": [{field: {"$gte": cutoff_date}} for field in date_fields]}
 
     @staticmethod
     def get_example_queries() -> list[str]:

@@ -88,6 +88,13 @@ class DynamicForagingDataLoader(DataLoader):
             json.dumps(self.paginate_settings, sort_keys=True),
         )
 
+    def clear_cache(self) -> None:
+        """Clear cached model-fitting data and the session table cache."""
+        super().clear_cache()
+        session_cached = getattr(self, "_load_session_table_cached", None)
+        if session_cached is not None and hasattr(session_cached, "clear"):
+            session_cached.clear()
+
     @staticmethod
     @pn.cache(max_items=CACHE_MAX_ITEMS, policy=CACHE_POLICY, ttl=CACHE_TTL)
     def _load_cached(
@@ -137,11 +144,15 @@ class DynamicForagingDataLoader(DataLoader):
                     pd.to_numeric(series, errors="ignore") if series.dtype == "object" else series
                 )
             )
-        if df is not None and "subject_id" in df.columns:
+            if not isinstance(df, pd.DataFrame):
+                df = pd.DataFrame(df)
+        if isinstance(df, pd.DataFrame) and "subject_id" in df.columns:
             df["subject_id"] = df["subject_id"].astype(str)
 
         if df is None or not isinstance(df, pd.DataFrame) or df.empty:
-            return df
+            return pd.DataFrame()
+
+        assert isinstance(df, pd.DataFrame)
 
         if "session_date" in df.columns:
             df = df.copy()

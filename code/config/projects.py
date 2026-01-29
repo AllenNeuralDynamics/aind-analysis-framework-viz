@@ -23,7 +23,7 @@ DYNAMIC_FORAGING_MODEL_FITTING_CONFIG = AppConfig(
         paginate_settings={"paginate": False},
     ),
     query=QueryConfig(
-        default_days_back=365,  # Load only recent year by default
+        default_days_back=30,  # Load only recent month by default
     ),
     scatter_plot=ScatterPlotConfig(
         x_column="n_trials",

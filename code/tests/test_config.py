@@ -72,11 +72,14 @@ class TestDynamicForagingDataLoader:
         assert loader.download_figures is True
         assert loader.paginate_settings == {"paginate": True, "page_size": 100}
 
-    @patch('aind_analysis_arch_result_access.han_pipeline.get_session_table')
-    @patch('aind_analysis_arch_result_access.get_mle_model_fitting')
+    @patch("aind_analysis_arch_result_access.han_pipeline.get_session_table")
+    @patch("aind_analysis_arch_result_access.get_mle_model_fitting")
     def test_load_calls_get_mle_model_fitting(self, mock_get_mle, mock_get_session):
         """Test that load() calls get_mle_model_fitting with correct parameters."""
         from config import DynamicForagingDataLoader
+
+        # Clear caches so mocks are exercised per test
+        DynamicForagingDataLoader().clear_cache()
 
         # Setup mock
         mock_df = pd.DataFrame({"_id": [1, 2], "subject_id": ["A", "B"]})
@@ -103,11 +106,14 @@ class TestDynamicForagingDataLoader:
         mock_get_session.assert_called_once_with(if_load_bpod=False)
         pd.testing.assert_frame_equal(result, mock_df)
 
-    @patch('aind_analysis_arch_result_access.han_pipeline.get_session_table')
-    @patch('aind_analysis_arch_result_access.get_mle_model_fitting')
+    @patch("aind_analysis_arch_result_access.han_pipeline.get_session_table")
+    @patch("aind_analysis_arch_result_access.get_mle_model_fitting")
     def test_load_with_custom_paginate_settings(self, mock_get_mle, mock_get_session):
         """Test that load() passes custom paginate settings."""
         from config import DynamicForagingDataLoader
+
+        # Clear caches so mocks are exercised per test
+        DynamicForagingDataLoader().clear_cache()
 
         mock_df = pd.DataFrame({"_id": [1]})
         mock_get_mle.return_value = mock_df
@@ -127,11 +133,14 @@ class TestDynamicForagingDataLoader:
         )
         mock_get_session.assert_called_once_with(if_load_bpod=False)
 
-    @patch('aind_analysis_arch_result_access.han_pipeline.get_session_table')
-    @patch('aind_analysis_arch_result_access.get_mle_model_fitting')
+    @patch("aind_analysis_arch_result_access.han_pipeline.get_session_table")
+    @patch("aind_analysis_arch_result_access.get_mle_model_fitting")
     def test_load_merges_session_table(self, mock_get_mle, mock_get_session):
         """Test that load() merges session table data with suffixes."""
         from config import DynamicForagingDataLoader
+
+        # Clear caches so mocks are exercised per test
+        DynamicForagingDataLoader().clear_cache()
 
         mock_df = pd.DataFrame(
             {
@@ -193,7 +202,7 @@ class TestGenericDataLoader:
         assert loader.flatten_separator == "_"
         assert loader.max_level == 2
 
-    @patch('aind_data_access_api.document_db.MetadataDbClient')
+    @patch("aind_data_access_api.document_db.MetadataDbClient")
     def test_load_with_mock_client(self, mock_client_class):
         """Test load() with mocked DocDB client."""
         from config import GenericDataLoader
@@ -255,11 +264,13 @@ class TestCustomDataLoader:
 
             def load(self, query: dict) -> pd.DataFrame:
                 # Simulate loading from some API
-                return pd.DataFrame({
-                    "_id": [1, 2, 3],
-                    "value": [10, 20, 30],
-                    "query_used": [str(query)] * 3,
-                })
+                return pd.DataFrame(
+                    {
+                        "_id": [1, 2, 3],
+                        "value": [10, 20, 30],
+                        "query_used": [str(query)] * 3,
+                    }
+                )
 
         # Test that it works
         loader = MockProjectDataLoader(api_key="test-key", timeout=60)
@@ -293,7 +304,9 @@ class TestAppConfig:
         """Test that DYNAMIC_FORAGING_MODEL_FITTING_CONFIG uses DynamicForagingDataLoader."""
         from config import DYNAMIC_FORAGING_MODEL_FITTING_CONFIG, DynamicForagingDataLoader
 
-        assert isinstance(DYNAMIC_FORAGING_MODEL_FITTING_CONFIG.data_loader, DynamicForagingDataLoader)
+        assert isinstance(
+            DYNAMIC_FORAGING_MODEL_FITTING_CONFIG.data_loader, DynamicForagingDataLoader
+        )
 
     def test_config_with_custom_loader(self):
         """Test creating AppConfig with a custom loader."""
@@ -326,13 +339,19 @@ class TestAppConfig:
         """Test that DYNAMIC_FORAGING_NM_CONFIG exists and is configured correctly."""
         from config import DYNAMIC_FORAGING_NM_CONFIG, GenericDataLoader
 
-        assert DYNAMIC_FORAGING_NM_CONFIG.app_title == "AIND Analysis Framework Explorer - Dynamic Foraging NM"
+        assert (
+            DYNAMIC_FORAGING_NM_CONFIG.app_title
+            == "AIND Analysis Framework Explorer - Dynamic Foraging NM"
+        )
         assert isinstance(DYNAMIC_FORAGING_NM_CONFIG.data_loader, GenericDataLoader)
         assert DYNAMIC_FORAGING_NM_CONFIG.data_loader.collection_name == "dynamic-foraging-nm"
         assert DYNAMIC_FORAGING_NM_CONFIG.asset.s3_location_column == "location"
         # NM config doesn't have subject_id_column (set to None)
         assert DYNAMIC_FORAGING_NM_CONFIG.subject_id_column is None
-        assert DYNAMIC_FORAGING_NM_CONFIG.session_date_column == "processing.data_processes.end_date_time"
+        assert (
+            DYNAMIC_FORAGING_NM_CONFIG.session_date_column
+            == "processing.data_processes.end_date_time"
+        )
         # NM config uses empty query as default
         assert DYNAMIC_FORAGING_NM_CONFIG.query.get_default_query() == {}
 
