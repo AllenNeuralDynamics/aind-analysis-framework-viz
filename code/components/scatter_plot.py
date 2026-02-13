@@ -17,10 +17,10 @@ import pandas as pd
 import panel as pn
 from bokeh.layouts import gridplot
 from bokeh.models import (
+    CategoricalColorMapper,
     ColumnDataSource,
     HoverTool,
     LinearColorMapper,
-    Range1d,
     TapTool,
 )
 from bokeh.plotting import figure
@@ -773,16 +773,39 @@ class ScatterPlot(BaseComponent):
         marginal_height = 120
         marginal_width = 120
 
-        x_numeric = pd.to_numeric(df_valid[x_col], errors="coerce").dropna().values
-        y_numeric = pd.to_numeric(df_valid[y_col], errors="coerce").dropna().values
+        x_numeric = pd.to_numeric(df_valid[x_col], errors="coerce")
+        y_numeric = pd.to_numeric(df_valid[y_col], errors="coerce")
+        x_valid_mask = x_numeric.notna()
+        y_valid_mask = y_numeric.notna()
 
-        if len(x_numeric) < 2 or len(y_numeric) < 2:
+        if x_valid_mask.sum() < 2 or y_valid_mask.sum() < 2:
             return pn.pane.Bokeh(p, sizing_mode="stretch_width")
 
-        n_bins = min(50, max(10, int(np.sqrt(len(x_numeric)))))
+        n_bins = min(50, max(10, int(np.sqrt(x_valid_mask.sum()))))
+
+        # Build category-color groups for stacked marginals
+        is_categorical_color = (
+            color_column
+            and color_column in df_valid.columns
+            and isinstance(color_mapper, CategoricalColorMapper)
+        )
+        if is_categorical_color:
+            factors = color_mapper.factors
+            palette = color_mapper.palette
+            color_map = dict(zip(factors, palette))
+            cat_values = df_valid[color_column].fillna("N/A").astype(str)
+            groups = [(cat, color_map.get(cat, "#808080")) for cat in factors]
+        else:
+            groups = [("all", "#3B82F6")]
+            cat_values = pd.Series(["all"] * len(df_valid), index=df_valid.index)
+
+        # Shared bin edges across all groups
+        x_all = x_numeric[x_valid_mask].values
+        y_all = y_numeric[y_valid_mask].values
+        x_edges = np.histogram_bin_edges(x_all, bins=n_bins)
+        y_edges = np.histogram_bin_edges(y_all, bins=n_bins)
 
         # Top marginal (X distribution)
-        x_hist, x_edges = np.histogram(x_numeric, bins=n_bins)
         p_top = figure(
             width=int(plot_width),
             height=marginal_height,
@@ -790,15 +813,23 @@ class ScatterPlot(BaseComponent):
             tools="",
             toolbar_location=None,
         )
-        p_top.quad(
-            top=x_hist,
-            bottom=0,
-            left=x_edges[:-1],
-            right=x_edges[1:],
-            fill_color="#3B82F6",
-            line_color="white",
-            fill_alpha=0.6,
-        )
+        x_bottom = np.zeros(len(x_edges) - 1)
+        for cat, color in groups:
+            mask = (cat_values == cat) & x_valid_mask
+            if not mask.any():
+                continue
+            hist, _ = np.histogram(x_numeric[mask].values, bins=x_edges)
+            p_top.quad(
+                top=x_bottom + hist,
+                bottom=x_bottom,
+                left=x_edges[:-1],
+                right=x_edges[1:],
+                fill_color=color,
+                line_color="white",
+                fill_alpha=0.6,
+            )
+            x_bottom = x_bottom + hist
+
         p_top.xaxis.visible = False
         p_top.yaxis.visible = False
         p_top.background_fill_color = None
@@ -807,7 +838,6 @@ class ScatterPlot(BaseComponent):
         p_top.min_border = 0
 
         # Right marginal (Y distribution)
-        y_hist, y_edges = np.histogram(y_numeric, bins=n_bins)
         p_right = figure(
             width=marginal_width,
             height=int(plot_height),
@@ -815,15 +845,23 @@ class ScatterPlot(BaseComponent):
             tools="",
             toolbar_location=None,
         )
-        p_right.quad(
-            top=y_edges[1:],
-            bottom=y_edges[:-1],
-            left=0,
-            right=y_hist,
-            fill_color="#3B82F6",
-            line_color="white",
-            fill_alpha=0.6,
-        )
+        y_left = np.zeros(len(y_edges) - 1)
+        for cat, color in groups:
+            mask = (cat_values == cat) & y_valid_mask
+            if not mask.any():
+                continue
+            hist, _ = np.histogram(y_numeric[mask].values, bins=y_edges)
+            p_right.quad(
+                top=y_edges[1:],
+                bottom=y_edges[:-1],
+                left=y_left,
+                right=y_left + hist,
+                fill_color=color,
+                line_color="white",
+                fill_alpha=0.6,
+            )
+            y_left = y_left + hist
+
         p_right.xaxis.visible = False
         p_right.yaxis.visible = False
         p_right.background_fill_color = None
