@@ -301,9 +301,9 @@ class ScatterPlot(BaseComponent):
         # Alpha slider
         self.alpha_slider = pn.widgets.FloatSlider(
             name="Opacity",
-            start=0.1,
+            start=0.05,
             end=1.0,
-            step=0.1,
+            step=0.05,
             value=scatter_config.default_alpha,
             width=180,
         )
