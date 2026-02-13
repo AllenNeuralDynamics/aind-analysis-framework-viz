@@ -131,6 +131,8 @@ class ScatterPlot(BaseComponent):
         location.sync(self.size_gamma_slider, {"value": "sp_sg"})
         location.sync(self.size_uniform_slider, {"value": "sp_su"})
         location.sync(self.marginal_toggle, {"value": "sp_marg"})
+        location.sync(self.marginal_stacked, {"value": "sp_mstk"})
+        location.sync(self.marginal_kde, {"value": "sp_mkde"})
 
     def _init_controls(self) -> None:
         """Initialize control widgets for the scatter plot."""
@@ -225,6 +227,18 @@ class ScatterPlot(BaseComponent):
             value=True,
             width=180,
         )
+        self.marginal_stacked = pn.widgets.Checkbox(
+            name="Stack histograms",
+            value=True,
+            width=180,
+        )
+        self.marginal_kde = pn.widgets.Checkbox(
+            name="KDE curve",
+            value=False,
+            width=180,
+        )
+        self.marginal_toggle.param.watch(self._toggle_marginal_controls, "value")
+        self._toggle_marginal_controls(None)
 
         # Alpha slider
         self.alpha_slider = pn.widgets.FloatSlider(
@@ -273,6 +287,12 @@ class ScatterPlot(BaseComponent):
     def _get_all_columns(self, df: pd.DataFrame) -> list[str]:
         """Get list of all columns from DataFrame."""
         return df.columns.tolist()
+
+    def _toggle_marginal_controls(self, _event) -> None:
+        """Toggle marginal sub-controls based on marginal toggle."""
+        show = self.marginal_toggle.value
+        self.marginal_stacked.visible = show
+        self.marginal_kde.visible = show
 
     def _toggle_size_controls(self, _event) -> None:
         """Toggle size controls based on size-by selection."""
@@ -434,6 +454,8 @@ class ScatterPlot(BaseComponent):
         size_gamma: float,
         uniform_size: int,
         show_marginals: bool = True,
+        marginal_stacked: bool = True,
+        marginal_kde: bool = False,
     ):
         """Create the Bokeh scatter plot figure."""
         scatter_config = self.config.scatter_plot
@@ -805,6 +827,8 @@ class ScatterPlot(BaseComponent):
         x_edges = np.histogram_bin_edges(x_all, bins=n_bins)
         y_edges = np.histogram_bin_edges(y_all, bins=n_bins)
 
+        hist_alpha = 0.6 if marginal_stacked else 0.4
+
         # Top marginal (X distribution)
         p_top = figure(
             width=int(plot_width),
@@ -819,16 +843,47 @@ class ScatterPlot(BaseComponent):
             if not mask.any():
                 continue
             hist, _ = np.histogram(x_numeric[mask].values, bins=x_edges)
-            p_top.quad(
-                top=x_bottom + hist,
-                bottom=x_bottom,
-                left=x_edges[:-1],
-                right=x_edges[1:],
-                fill_color=color,
-                line_color="white",
-                fill_alpha=0.6,
-            )
-            x_bottom = x_bottom + hist
+            if marginal_stacked:
+                p_top.quad(
+                    top=x_bottom + hist,
+                    bottom=x_bottom,
+                    left=x_edges[:-1],
+                    right=x_edges[1:],
+                    fill_color=color,
+                    line_color="white",
+                    fill_alpha=hist_alpha,
+                )
+                x_bottom = x_bottom + hist
+            else:
+                p_top.quad(
+                    top=hist,
+                    bottom=0,
+                    left=x_edges[:-1],
+                    right=x_edges[1:],
+                    fill_color=color,
+                    line_color=color,
+                    fill_alpha=hist_alpha,
+                )
+
+        # KDE curves for top marginal
+        if marginal_kde:
+            for cat, color in groups:
+                mask = (cat_values == cat) & x_valid_mask
+                vals = x_numeric[mask].values
+                if len(vals) < 2:
+                    continue
+                try:
+                    from scipy.stats import gaussian_kde
+
+                    kde = gaussian_kde(vals)
+                    x_grid = np.linspace(x_all.min(), x_all.max(), 200)
+                    density = kde(x_grid)
+                    # Scale density to match histogram counts
+                    bin_width = x_edges[1] - x_edges[0]
+                    density_scaled = density * len(vals) * bin_width
+                    p_top.line(x_grid, density_scaled, line_color=color, line_width=2)
+                except Exception:
+                    pass
 
         p_top.xaxis.visible = False
         p_top.yaxis.visible = False
@@ -851,16 +906,46 @@ class ScatterPlot(BaseComponent):
             if not mask.any():
                 continue
             hist, _ = np.histogram(y_numeric[mask].values, bins=y_edges)
-            p_right.quad(
-                top=y_edges[1:],
-                bottom=y_edges[:-1],
-                left=y_left,
-                right=y_left + hist,
-                fill_color=color,
-                line_color="white",
-                fill_alpha=0.6,
-            )
-            y_left = y_left + hist
+            if marginal_stacked:
+                p_right.quad(
+                    top=y_edges[1:],
+                    bottom=y_edges[:-1],
+                    left=y_left,
+                    right=y_left + hist,
+                    fill_color=color,
+                    line_color="white",
+                    fill_alpha=hist_alpha,
+                )
+                y_left = y_left + hist
+            else:
+                p_right.quad(
+                    top=y_edges[1:],
+                    bottom=y_edges[:-1],
+                    left=0,
+                    right=hist,
+                    fill_color=color,
+                    line_color=color,
+                    fill_alpha=hist_alpha,
+                )
+
+        # KDE curves for right marginal
+        if marginal_kde:
+            for cat, color in groups:
+                mask = (cat_values == cat) & y_valid_mask
+                vals = y_numeric[mask].values
+                if len(vals) < 2:
+                    continue
+                try:
+                    from scipy.stats import gaussian_kde
+
+                    kde = gaussian_kde(vals)
+                    y_grid = np.linspace(y_all.min(), y_all.max(), 200)
+                    density = kde(y_grid)
+                    bin_width = y_edges[1] - y_edges[0]
+                    density_scaled = density * len(vals) * bin_width
+                    p_right.line(density_scaled, y_grid, line_color=color, line_width=2)
+                except Exception:
+                    pass
 
         p_right.xaxis.visible = False
         p_right.yaxis.visible = False
@@ -894,6 +979,8 @@ class ScatterPlot(BaseComponent):
         size_gamma: float,
         uniform_size: int,
         show_marginals: bool = True,
+        marginal_stacked: bool = True,
+        marginal_kde: bool = False,
     ):
         """Render the scatter plot with current settings."""
         try:
@@ -931,6 +1018,8 @@ class ScatterPlot(BaseComponent):
                 size_gamma,
                 uniform_size,
                 show_marginals,
+                marginal_stacked,
+                marginal_kde,
             )
         except Exception as e:
             logger.error(f"Error rendering scatter plot: {e}")
@@ -970,6 +1059,8 @@ class ScatterPlot(BaseComponent):
             pn.layout.Divider(),
             # Marginal distributions
             self.marginal_toggle,
+            self.marginal_stacked,
+            self.marginal_kde,
             pn.layout.Divider(),
             # Plot settings
             pn.Card(
@@ -1006,6 +1097,8 @@ class ScatterPlot(BaseComponent):
             size_gamma=self.size_gamma_slider,
             uniform_size=self.size_uniform_slider,
             show_marginals=self.marginal_toggle,
+            marginal_stacked=self.marginal_stacked,
+            marginal_kde=self.marginal_kde,
         )
 
         # Side-by-side layout: controls on left, plot on right
