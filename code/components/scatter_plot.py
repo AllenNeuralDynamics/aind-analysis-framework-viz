@@ -1114,6 +1114,7 @@ class ScatterPlot(BaseComponent):
         heatmap_bins: int = 30,
         heatmap_hide_dots: bool = False,
         heatmap_alpha: float = 0.6,
+        heatmap_smooth: float = 0.0,
     ):
         """Render the scatter plot with current settings."""
         try:
