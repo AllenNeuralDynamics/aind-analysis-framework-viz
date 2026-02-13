@@ -140,6 +140,13 @@ class ScatterPlot(BaseComponent):
         location.sync(self.heatmap_hide_dots, {"value": "sp_hmhd"})
         location.sync(self.heatmap_alpha_slider, {"value": "sp_hma"})
         location.sync(self.heatmap_smooth_slider, {"value": "sp_hms"})
+        location.sync(self.aggr_group_toggle, {"value": "sp_agrg"})
+        location.sync(self.aggr_group_method, {"value": "sp_agrgm"})
+        location.sync(self.aggr_all_toggle, {"value": "sp_agra"})
+        location.sync(self.aggr_all_method, {"value": "sp_agram"})
+        location.sync(self.aggr_quantiles_toggle, {"value": "sp_agrq"})
+        location.sync(self.aggr_n_quantiles, {"value": "sp_agrnq"})
+        location.sync(self.aggr_smooth_factor, {"value": "sp_agrsf"})
 
     def _init_controls(self) -> None:
         """Initialize control widgets for the scatter plot."""
@@ -298,6 +305,57 @@ class ScatterPlot(BaseComponent):
         self.heatmap_toggle.param.watch(self._toggle_heatmap_controls, "value")
         self._toggle_heatmap_controls(None)
 
+        # Aggregation options
+        aggr_methods = ["---", "mean", "mean +/- sem", "lowess", "running average", "linear fit"]
+        self.aggr_group_toggle = pn.widgets.Checkbox(
+            name="Aggr each group",
+            value=False,
+            width=180,
+        )
+        self.aggr_group_method = pn.widgets.Select(
+            name="Aggr method (group)",
+            options=aggr_methods,
+            value="lowess",
+            width=180,
+        )
+        self.aggr_all_toggle = pn.widgets.Checkbox(
+            name="Aggr all",
+            value=False,
+            width=180,
+        )
+        self.aggr_all_method = pn.widgets.Select(
+            name="Aggr method (all)",
+            options=aggr_methods,
+            value="mean +/- sem",
+            width=180,
+        )
+        self.aggr_quantiles_toggle = pn.widgets.Checkbox(
+            name="Use quantiles of x",
+            value=False,
+            width=180,
+        )
+        self.aggr_n_quantiles = pn.widgets.IntSlider(
+            name="Number of quantiles",
+            start=1,
+            end=100,
+            step=1,
+            value=20,
+            width=180,
+        )
+        self.aggr_smooth_factor = pn.widgets.IntSlider(
+            name="Smooth factor",
+            start=1,
+            end=20,
+            step=1,
+            value=5,
+            width=180,
+        )
+
+        self.aggr_group_toggle.param.watch(self._toggle_aggr_controls, "value")
+        self.aggr_all_toggle.param.watch(self._toggle_aggr_controls, "value")
+        self.aggr_quantiles_toggle.param.watch(self._toggle_aggr_controls, "value")
+        self._toggle_aggr_controls(None)
+
         # Alpha slider
         self.alpha_slider = pn.widgets.FloatSlider(
             name="Opacity",
@@ -345,6 +403,17 @@ class ScatterPlot(BaseComponent):
     def _get_all_columns(self, df: pd.DataFrame) -> list[str]:
         """Get list of all columns from DataFrame."""
         return df.columns.tolist()
+
+    def _toggle_aggr_controls(self, _event) -> None:
+        """Toggle aggregation sub-controls based on toggles."""
+        group_on = self.aggr_group_toggle.value
+        all_on = self.aggr_all_toggle.value
+        either_on = group_on or all_on
+        self.aggr_group_method.visible = group_on
+        self.aggr_all_method.visible = all_on
+        self.aggr_quantiles_toggle.visible = either_on
+        self.aggr_n_quantiles.visible = either_on and self.aggr_quantiles_toggle.value
+        self.aggr_smooth_factor.visible = either_on
 
     def _toggle_marginal_controls(self, _event) -> None:
         """Toggle marginal sub-controls based on marginal toggle."""
@@ -468,6 +537,217 @@ class ScatterPlot(BaseComponent):
             else:
                 self.size_select.value = "---"
 
+    def _compute_aggregation(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        method: str,
+        smooth_factor: int = 5,
+        use_quantiles: bool = False,
+        n_quantiles: int = 20,
+    ) -> dict:
+        """Compute aggregation curves for x/y data.
+
+        Returns dict with keys:
+        - 'x': x values for the curve
+        - 'y': y values for the curve
+        - 'y_upper': upper bound (for mean +/- sem)
+        - 'y_lower': lower bound (for mean +/- sem)
+        """
+        if len(x) < 2:
+            return {}
+
+        # Sort by x
+        sort_idx = np.argsort(x)
+        x_sorted = x[sort_idx]
+        y_sorted = y[sort_idx]
+
+        # Remove NaN
+        valid = np.isfinite(x_sorted) & np.isfinite(y_sorted)
+        x_sorted = x_sorted[valid]
+        y_sorted = y_sorted[valid]
+        if len(x_sorted) < 2:
+            return {}
+
+        if use_quantiles:
+            # Bin x into quantiles and compute stats per bin
+            quantile_edges = np.quantile(x_sorted, np.linspace(0, 1, n_quantiles + 1))
+            bin_indices = np.digitize(x_sorted, quantile_edges[1:-1])
+            x_binned = []
+            y_binned = []
+            y_sem = []
+            for i in range(n_quantiles):
+                mask = bin_indices == i
+                if mask.sum() == 0:
+                    continue
+                x_binned.append(np.mean(x_sorted[mask]))
+                y_binned.append(np.mean(y_sorted[mask]))
+                y_sem.append(
+                    np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
+                    if mask.sum() > 1
+                    else 0
+                )
+            x_sorted = np.array(x_binned)
+            y_sorted = np.array(y_binned)
+            y_sem_arr = np.array(y_sem)
+            if len(x_sorted) < 2:
+                return {}
+
+        if method == "mean":
+            if use_quantiles:
+                return {"x": x_sorted, "y": y_sorted}
+            # Bin into groups
+            n_bins = max(2, len(x_sorted) // max(1, smooth_factor))
+            bin_edges = np.linspace(x_sorted.min(), x_sorted.max(), n_bins + 1)
+            bin_idx = np.digitize(x_sorted, bin_edges[1:-1])
+            x_means, y_means = [], []
+            for i in range(n_bins):
+                mask = bin_idx == i
+                if mask.sum() > 0:
+                    x_means.append(np.mean(x_sorted[mask]))
+                    y_means.append(np.mean(y_sorted[mask]))
+            return {"x": np.array(x_means), "y": np.array(y_means)}
+
+        elif method == "mean +/- sem":
+            if use_quantiles:
+                return {
+                    "x": x_sorted,
+                    "y": y_sorted,
+                    "y_upper": y_sorted + y_sem_arr,
+                    "y_lower": y_sorted - y_sem_arr,
+                }
+            n_bins = max(2, len(x_sorted) // max(1, smooth_factor))
+            bin_edges = np.linspace(x_sorted.min(), x_sorted.max(), n_bins + 1)
+            bin_idx = np.digitize(x_sorted, bin_edges[1:-1])
+            x_means, y_means, y_upper, y_lower = [], [], [], []
+            for i in range(n_bins):
+                mask = bin_idx == i
+                if mask.sum() > 0:
+                    xm = np.mean(x_sorted[mask])
+                    ym = np.mean(y_sorted[mask])
+                    sem = (
+                        np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
+                        if mask.sum() > 1
+                        else 0
+                    )
+                    x_means.append(xm)
+                    y_means.append(ym)
+                    y_upper.append(ym + sem)
+                    y_lower.append(ym - sem)
+            return {
+                "x": np.array(x_means),
+                "y": np.array(y_means),
+                "y_upper": np.array(y_upper),
+                "y_lower": np.array(y_lower),
+            }
+
+        elif method == "lowess":
+            try:
+                import statsmodels.api as sm
+
+                frac = max(0.05, min(1.0, smooth_factor / len(x_sorted)))
+                result = sm.nonparametric.lowess(y_sorted, x_sorted, frac=frac)
+                return {"x": result[:, 0], "y": result[:, 1]}
+            except ImportError:
+                return {}
+
+        elif method == "running average":
+            window = max(1, smooth_factor)
+            if len(y_sorted) < window:
+                return {"x": x_sorted, "y": y_sorted}
+            kernel = np.ones(window) / window
+            y_smooth = np.convolve(y_sorted, kernel, mode="valid")
+            # Trim x to match
+            offset = (window - 1) // 2
+            x_smooth = x_sorted[offset : offset + len(y_smooth)]
+            return {"x": x_smooth, "y": y_smooth}
+
+        elif method == "linear fit":
+            coeffs = np.polyfit(x_sorted, y_sorted, 1)
+            x_fit = np.array([x_sorted.min(), x_sorted.max()])
+            y_fit = np.polyval(coeffs, x_fit)
+            return {"x": x_fit, "y": y_fit}
+
+        return {}
+
+    def _render_aggr_on_figure(
+        self,
+        p,
+        df_valid: pd.DataFrame,
+        x_col: str,
+        y_col: str,
+        group_column: str | None,
+        color_mapper,
+        aggr_group: bool,
+        aggr_group_method: str,
+        aggr_all: bool,
+        aggr_all_method: str,
+        smooth_factor: int,
+        use_quantiles: bool,
+        n_quantiles: int,
+    ) -> None:
+        """Render aggregation curves on the scatter plot figure."""
+        from bokeh.models import Band, ColumnDataSource as CDS
+
+        x_numeric = pd.to_numeric(df_valid[x_col], errors="coerce").values
+        y_numeric = pd.to_numeric(df_valid[y_col], errors="coerce").values
+
+        # Aggregate each group
+        if aggr_group and aggr_group_method != "---" and group_column and group_column in df_valid.columns:
+            group_values = df_valid[group_column].fillna("N/A").astype(str)
+            unique_groups = list(pd.unique(group_values))
+
+            # Get group colors from color_mapper if categorical
+            color_map = {}
+            if isinstance(color_mapper, CategoricalColorMapper):
+                color_map = dict(zip(color_mapper.factors, color_mapper.palette))
+
+            for group in unique_groups:
+                mask = (group_values == group).values
+                x_g = x_numeric[mask].astype(float)
+                y_g = y_numeric[mask].astype(float)
+                color = color_map.get(group, "#333333")
+
+                result = self._compute_aggregation(
+                    x_g, y_g, aggr_group_method, smooth_factor, use_quantiles, n_quantiles
+                )
+                if not result:
+                    continue
+
+                p.line(result["x"], result["y"], line_color=color, line_width=3, line_alpha=0.9)
+                if "y_upper" in result and "y_lower" in result:
+                    band_source = CDS(
+                        data={"x": result["x"], "upper": result["y_upper"], "lower": result["y_lower"]}
+                    )
+                    band = Band(
+                        base="x", upper="upper", lower="lower", source=band_source,
+                        fill_color=color, fill_alpha=0.2, line_color=color, line_alpha=0.3,
+                    )
+                    p.add_layout(band)
+
+        # Aggregate all
+        if aggr_all and aggr_all_method != "---":
+            x_all = x_numeric.astype(float)
+            y_all = y_numeric.astype(float)
+
+            result = self._compute_aggregation(
+                x_all, y_all, aggr_all_method, smooth_factor, use_quantiles, n_quantiles
+            )
+            if result:
+                p.line(
+                    result["x"], result["y"],
+                    line_color="black", line_width=3, line_dash="dashed", line_alpha=0.9,
+                )
+                if "y_upper" in result and "y_lower" in result:
+                    band_source = CDS(
+                        data={"x": result["x"], "upper": result["y_upper"], "lower": result["y_lower"]}
+                    )
+                    band = Band(
+                        base="x", upper="upper", lower="lower", source=band_source,
+                        fill_color="black", fill_alpha=0.15, line_color="black", line_alpha=0.3,
+                    )
+                    p.add_layout(band)
+
     def _build_tooltip_html(self) -> str:
         """Build HTML template for hover tooltip."""
         scatter_config = self.config.scatter_plot
@@ -531,6 +811,13 @@ class ScatterPlot(BaseComponent):
         heatmap_hide_dots: bool = False,
         heatmap_alpha: float = 0.6,
         heatmap_smooth: float = 0.0,
+        aggr_group: bool = False,
+        aggr_group_method: str = "lowess",
+        aggr_all: bool = False,
+        aggr_all_method: str = "mean +/- sem",
+        aggr_quantiles: bool = False,
+        aggr_n_quantiles: int = 20,
+        aggr_smooth_factor: int = 5,
     ):
         """Create the Bokeh scatter plot figure."""
         scatter_config = self.config.scatter_plot
@@ -884,6 +1171,15 @@ class ScatterPlot(BaseComponent):
         if doc is not None:
             doc.add_next_tick_callback(reapply_selection)
 
+        # Render aggregation curves
+        if (aggr_group or aggr_all) and not x_is_datetime and not y_is_datetime:
+            self._render_aggr_on_figure(
+                p, df_valid, x_col, y_col, group_column, color_mapper,
+                aggr_group, aggr_group_method,
+                aggr_all, aggr_all_method,
+                aggr_smooth_factor, aggr_quantiles, aggr_n_quantiles,
+            )
+
         # Add color bar for continuous mappings
         if color_column:
             add_color_bar(p, color_mapper, color_column, font_size=font_size)
@@ -1161,6 +1457,13 @@ class ScatterPlot(BaseComponent):
                 heatmap_hide_dots,
                 heatmap_alpha,
                 heatmap_smooth,
+                aggr_group,
+                aggr_group_method,
+                aggr_all,
+                aggr_all_method,
+                aggr_quantiles,
+                aggr_n_quantiles,
+                aggr_smooth_factor,
             )
         except Exception as e:
             logger.error(f"Error rendering scatter plot: {e}")
@@ -1197,6 +1500,15 @@ class ScatterPlot(BaseComponent):
             self.shape_select,
             pn.layout.Divider(),
             self.group_select,
+            pn.layout.Divider(),
+            # Aggregation
+            self.aggr_group_toggle,
+            self.aggr_group_method,
+            self.aggr_all_toggle,
+            self.aggr_all_method,
+            self.aggr_quantiles_toggle,
+            self.aggr_n_quantiles,
+            self.aggr_smooth_factor,
             pn.layout.Divider(),
             # Marginal distributions
             self.marginal_toggle,
@@ -1256,6 +1568,13 @@ class ScatterPlot(BaseComponent):
             heatmap_hide_dots=self.heatmap_hide_dots,
             heatmap_alpha=self.heatmap_alpha_slider,
             heatmap_smooth=self.heatmap_smooth_slider,
+            aggr_group=self.aggr_group_toggle,
+            aggr_group_method=self.aggr_group_method,
+            aggr_all=self.aggr_all_toggle,
+            aggr_all_method=self.aggr_all_method,
+            aggr_quantiles=self.aggr_quantiles_toggle,
+            aggr_n_quantiles=self.aggr_n_quantiles,
+            aggr_smooth_factor=self.aggr_smooth_factor,
         )
 
         # Side-by-side layout: controls on left, plot on right
