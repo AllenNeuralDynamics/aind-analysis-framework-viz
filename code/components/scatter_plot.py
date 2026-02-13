@@ -133,9 +133,11 @@ class ScatterPlot(BaseComponent):
         location.sync(self.marginal_toggle, {"value": "sp_marg"})
         location.sync(self.marginal_stacked, {"value": "sp_mstk"})
         location.sync(self.marginal_kde, {"value": "sp_mkde"})
+        location.sync(self.marginal_bins_slider, {"value": "sp_mbin"})
         location.sync(self.heatmap_toggle, {"value": "sp_hm"})
         location.sync(self.heatmap_bins_slider, {"value": "sp_hmb"})
         location.sync(self.heatmap_hide_dots, {"value": "sp_hmhd"})
+        location.sync(self.heatmap_alpha_slider, {"value": "sp_hma"})
 
     def _init_controls(self) -> None:
         """Initialize control widgets for the scatter plot."""
@@ -240,6 +242,14 @@ class ScatterPlot(BaseComponent):
             value=False,
             width=180,
         )
+        self.marginal_bins_slider = pn.widgets.IntSlider(
+            name="Histogram bins",
+            start=5,
+            end=100,
+            step=1,
+            value=25,
+            width=180,
+        )
         self.marginal_toggle.param.watch(self._toggle_marginal_controls, "value")
         self._toggle_marginal_controls(None)
 
@@ -260,6 +270,14 @@ class ScatterPlot(BaseComponent):
         self.heatmap_hide_dots = pn.widgets.Checkbox(
             name="Hide dots",
             value=False,
+            width=180,
+        )
+        self.heatmap_alpha_slider = pn.widgets.FloatSlider(
+            name="Heatmap opacity",
+            start=0.1,
+            end=1.0,
+            step=0.1,
+            value=0.6,
             width=180,
         )
         self.heatmap_toggle.param.watch(self._toggle_heatmap_controls, "value")
@@ -318,12 +336,14 @@ class ScatterPlot(BaseComponent):
         show = self.marginal_toggle.value
         self.marginal_stacked.visible = show
         self.marginal_kde.visible = show
+        self.marginal_bins_slider.visible = show
 
     def _toggle_heatmap_controls(self, _event) -> None:
         """Toggle heatmap sub-controls based on heatmap toggle."""
         show = self.heatmap_toggle.value
         self.heatmap_bins_slider.visible = show
         self.heatmap_hide_dots.visible = show
+        self.heatmap_alpha_slider.visible = show
 
     def _toggle_size_controls(self, _event) -> None:
         """Toggle size controls based on size-by selection."""
@@ -487,9 +507,11 @@ class ScatterPlot(BaseComponent):
         show_marginals: bool = True,
         marginal_stacked: bool = True,
         marginal_kde: bool = False,
+        marginal_bins: int = 25,
         show_heatmap: bool = False,
         heatmap_bins: int = 30,
         heatmap_hide_dots: bool = False,
+        heatmap_alpha: float = 0.6,
     ):
         """Create the Bokeh scatter plot figure."""
         scatter_config = self.config.scatter_plot
@@ -658,7 +680,7 @@ class ScatterPlot(BaseComponent):
                     dw=xedges[-1] - xedges[0],
                     dh=yedges[-1] - yedges[0],
                     color_mapper=hm_mapper,
-                    global_alpha=0.6,
+                    global_alpha=heatmap_alpha,
                 )
 
         markers = [
@@ -876,7 +898,7 @@ class ScatterPlot(BaseComponent):
         if x_valid_mask.sum() < 2 or y_valid_mask.sum() < 2:
             return pn.pane.Bokeh(p, sizing_mode="stretch_width")
 
-        n_bins = min(50, max(10, int(np.sqrt(x_valid_mask.sum()))))
+        n_bins = int(marginal_bins)
 
         # Build category-color groups for stacked marginals
         is_categorical_color = (
@@ -1054,9 +1076,11 @@ class ScatterPlot(BaseComponent):
         show_marginals: bool = True,
         marginal_stacked: bool = True,
         marginal_kde: bool = False,
+        marginal_bins: int = 25,
         show_heatmap: bool = False,
         heatmap_bins: int = 30,
         heatmap_hide_dots: bool = False,
+        heatmap_alpha: float = 0.6,
     ):
         """Render the scatter plot with current settings."""
         try:
@@ -1096,9 +1120,11 @@ class ScatterPlot(BaseComponent):
                 show_marginals,
                 marginal_stacked,
                 marginal_kde,
+                marginal_bins,
                 show_heatmap,
                 heatmap_bins,
                 heatmap_hide_dots,
+                heatmap_alpha,
             )
         except Exception as e:
             logger.error(f"Error rendering scatter plot: {e}")
@@ -1138,12 +1164,14 @@ class ScatterPlot(BaseComponent):
             pn.layout.Divider(),
             # Marginal distributions
             self.marginal_toggle,
+            self.marginal_bins_slider,
             self.marginal_stacked,
             self.marginal_kde,
             pn.layout.Divider(),
             # 2D heatmap
             self.heatmap_toggle,
             self.heatmap_bins_slider,
+            self.heatmap_alpha_slider,
             self.heatmap_hide_dots,
             pn.layout.Divider(),
             # Plot settings
@@ -1183,9 +1211,11 @@ class ScatterPlot(BaseComponent):
             show_marginals=self.marginal_toggle,
             marginal_stacked=self.marginal_stacked,
             marginal_kde=self.marginal_kde,
+            marginal_bins=self.marginal_bins_slider,
             show_heatmap=self.heatmap_toggle,
             heatmap_bins=self.heatmap_bins_slider,
             heatmap_hide_dots=self.heatmap_hide_dots,
+            heatmap_alpha=self.heatmap_alpha_slider,
         )
 
         # Side-by-side layout: controls on left, plot on right
