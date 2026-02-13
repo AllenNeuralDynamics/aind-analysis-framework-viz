@@ -15,10 +15,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 import panel as pn
+from bokeh.layouts import gridplot
 from bokeh.models import (
     ColumnDataSource,
     HoverTool,
     LinearColorMapper,
+    Range1d,
     TapTool,
 )
 from bokeh.plotting import figure
@@ -128,6 +130,7 @@ class ScatterPlot(BaseComponent):
         location.sync(self.size_range_slider, {"value": "sp_sr"})
         location.sync(self.size_gamma_slider, {"value": "sp_sg"})
         location.sync(self.size_uniform_slider, {"value": "sp_su"})
+        location.sync(self.marginal_toggle, {"value": "sp_marg"})
 
     def _init_controls(self) -> None:
         """Initialize control widgets for the scatter plot."""
@@ -215,6 +218,14 @@ class ScatterPlot(BaseComponent):
         )
         self.color_select.param.watch(self._toggle_color_controls, "value")
         self._toggle_color_controls(None)
+
+        # Marginal distributions toggle
+        self.marginal_toggle = pn.widgets.Toggle(
+            name="Marginal distributions",
+            value=True,
+            button_type="light",
+            width=180,
+        )
 
         # Alpha slider
         self.alpha_slider = pn.widgets.FloatSlider(
@@ -423,6 +434,7 @@ class ScatterPlot(BaseComponent):
         size_range: tuple[int, int],
         size_gamma: float,
         uniform_size: int,
+        show_marginals: bool = True,
     ):
         """Create the Bokeh scatter plot figure."""
         scatter_config = self.config.scatter_plot
@@ -754,7 +766,77 @@ class ScatterPlot(BaseComponent):
         p.yaxis.major_label_text_font_size = f"{tick_size}pt"
 
         self._latest_figure = p
-        return pn.pane.Bokeh(p, sizing_mode="stretch_width")
+
+        if not show_marginals or x_is_datetime or y_is_datetime:
+            return pn.pane.Bokeh(p, sizing_mode="stretch_width")
+
+        # --- Marginal histograms ---
+        marginal_height = 120
+        marginal_width = 120
+
+        x_numeric = pd.to_numeric(df_valid[x_col], errors="coerce").dropna().values
+        y_numeric = pd.to_numeric(df_valid[y_col], errors="coerce").dropna().values
+
+        if len(x_numeric) < 2 or len(y_numeric) < 2:
+            return pn.pane.Bokeh(p, sizing_mode="stretch_width")
+
+        n_bins = min(50, max(10, int(np.sqrt(len(x_numeric)))))
+
+        # Top marginal (X distribution)
+        x_hist, x_edges = np.histogram(x_numeric, bins=n_bins)
+        p_top = figure(
+            width=int(plot_width),
+            height=marginal_height,
+            x_range=p.x_range,
+            tools="",
+            toolbar_location=None,
+        )
+        p_top.quad(
+            top=x_hist,
+            bottom=0,
+            left=x_edges[:-1],
+            right=x_edges[1:],
+            fill_color="#3B82F6",
+            line_color="white",
+            fill_alpha=0.6,
+        )
+        p_top.xaxis.visible = False
+        p_top.yaxis.visible = False
+        p_top.background_fill_color = None
+        p_top.border_fill_color = None
+        p_top.outline_line_color = None
+        p_top.min_border = 0
+
+        # Right marginal (Y distribution)
+        y_hist, y_edges = np.histogram(y_numeric, bins=n_bins)
+        p_right = figure(
+            width=marginal_width,
+            height=int(plot_height),
+            y_range=p.y_range,
+            tools="",
+            toolbar_location=None,
+        )
+        p_right.quad(
+            top=y_edges[1:],
+            bottom=y_edges[:-1],
+            left=0,
+            right=y_hist,
+            fill_color="#3B82F6",
+            line_color="white",
+            fill_alpha=0.6,
+        )
+        p_right.xaxis.visible = False
+        p_right.yaxis.visible = False
+        p_right.background_fill_color = None
+        p_right.border_fill_color = None
+        p_right.outline_line_color = None
+        p_right.min_border = 0
+
+        layout = gridplot(
+            [[p_top, None], [p, p_right]],
+            merge_tools=False,
+        )
+        return pn.pane.Bokeh(layout, sizing_mode="stretch_width")
 
     def _render_plot(
         self,
@@ -774,6 +856,7 @@ class ScatterPlot(BaseComponent):
         size_range: tuple[int, int],
         size_gamma: float,
         uniform_size: int,
+        show_marginals: bool = True,
     ):
         """Render the scatter plot with current settings."""
         try:
@@ -810,6 +893,7 @@ class ScatterPlot(BaseComponent):
                 size_range,
                 size_gamma,
                 uniform_size,
+                show_marginals,
             )
         except Exception as e:
             logger.error(f"Error rendering scatter plot: {e}")
@@ -847,6 +931,9 @@ class ScatterPlot(BaseComponent):
             pn.layout.Divider(),
             self.group_select,
             pn.layout.Divider(),
+            # Marginal distributions
+            self.marginal_toggle,
+            pn.layout.Divider(),
             # Plot settings
             pn.Card(
                 self.alpha_slider,
@@ -881,6 +968,7 @@ class ScatterPlot(BaseComponent):
             size_range=self.size_range_slider,
             size_gamma=self.size_gamma_slider,
             uniform_size=self.size_uniform_slider,
+            show_marginals=self.marginal_toggle,
         )
 
         # Side-by-side layout: controls on left, plot on right
