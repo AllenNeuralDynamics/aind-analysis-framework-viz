@@ -133,6 +133,8 @@ class ScatterPlot(BaseComponent):
         location.sync(self.marginal_toggle, {"value": "sp_marg"})
         location.sync(self.marginal_stacked, {"value": "sp_mstk"})
         location.sync(self.marginal_kde, {"value": "sp_mkde"})
+        location.sync(self.heatmap_toggle, {"value": "sp_hm"})
+        location.sync(self.heatmap_bins_slider, {"value": "sp_hmb"})
 
     def _init_controls(self) -> None:
         """Initialize control widgets for the scatter plot."""
@@ -240,6 +242,23 @@ class ScatterPlot(BaseComponent):
         self.marginal_toggle.param.watch(self._toggle_marginal_controls, "value")
         self._toggle_marginal_controls(None)
 
+        # 2D heatmap overlay
+        self.heatmap_toggle = pn.widgets.Checkbox(
+            name="2D heatmap",
+            value=False,
+            width=180,
+        )
+        self.heatmap_bins_slider = pn.widgets.IntSlider(
+            name="Heatmap bins",
+            start=10,
+            end=100,
+            step=5,
+            value=30,
+            width=180,
+        )
+        self.heatmap_toggle.param.watch(self._toggle_heatmap_controls, "value")
+        self._toggle_heatmap_controls(None)
+
         # Alpha slider
         self.alpha_slider = pn.widgets.FloatSlider(
             name="Opacity",
@@ -293,6 +312,10 @@ class ScatterPlot(BaseComponent):
         show = self.marginal_toggle.value
         self.marginal_stacked.visible = show
         self.marginal_kde.visible = show
+
+    def _toggle_heatmap_controls(self, _event) -> None:
+        """Toggle heatmap sub-controls based on heatmap toggle."""
+        self.heatmap_bins_slider.visible = self.heatmap_toggle.value
 
     def _toggle_size_controls(self, _event) -> None:
         """Toggle size controls based on size-by selection."""
@@ -456,6 +479,8 @@ class ScatterPlot(BaseComponent):
         show_marginals: bool = True,
         marginal_stacked: bool = True,
         marginal_kde: bool = False,
+        show_heatmap: bool = False,
+        heatmap_bins: int = 30,
     ):
         """Create the Bokeh scatter plot figure."""
         scatter_config = self.config.scatter_plot
@@ -592,6 +617,40 @@ class ScatterPlot(BaseComponent):
             active_drag="lasso_select",
             active_scroll="wheel_zoom",
         )
+
+        # 2D heatmap overlay (rendered first so scatter points appear on top)
+        if show_heatmap and not x_is_datetime and not y_is_datetime:
+            x_hm = pd.to_numeric(df_valid[x_col], errors="coerce").dropna()
+            y_hm = pd.to_numeric(df_valid[y_col], errors="coerce").dropna()
+            common_idx = x_hm.index.intersection(y_hm.index)
+            if len(common_idx) >= 2:
+                x_vals = x_hm.loc[common_idx].values
+                y_vals = y_hm.loc[common_idx].values
+                heatmap_data, xedges, yedges = np.histogram2d(
+                    x_vals, y_vals, bins=int(heatmap_bins)
+                )
+                # Transpose so rows=y, cols=x for Bokeh image
+                heatmap_data = heatmap_data.T
+                # Mask zero bins as NaN so they're transparent
+                heatmap_data = heatmap_data.astype(float)
+                heatmap_data[heatmap_data == 0] = np.nan
+                from bokeh.palettes import Turbo256
+
+                hm_mapper = LinearColorMapper(
+                    palette=Turbo256,
+                    low=np.nanmin(heatmap_data),
+                    high=np.nanmax(heatmap_data),
+                    nan_color=(0, 0, 0, 0),
+                )
+                p.image(
+                    image=[heatmap_data],
+                    x=xedges[0],
+                    y=yedges[0],
+                    dw=xedges[-1] - xedges[0],
+                    dh=yedges[-1] - yedges[0],
+                    color_mapper=hm_mapper,
+                    global_alpha=0.6,
+                )
 
         markers = [
             "circle",
@@ -981,6 +1040,8 @@ class ScatterPlot(BaseComponent):
         show_marginals: bool = True,
         marginal_stacked: bool = True,
         marginal_kde: bool = False,
+        show_heatmap: bool = False,
+        heatmap_bins: int = 30,
     ):
         """Render the scatter plot with current settings."""
         try:
@@ -1020,6 +1081,8 @@ class ScatterPlot(BaseComponent):
                 show_marginals,
                 marginal_stacked,
                 marginal_kde,
+                show_heatmap,
+                heatmap_bins,
             )
         except Exception as e:
             logger.error(f"Error rendering scatter plot: {e}")
@@ -1062,6 +1125,10 @@ class ScatterPlot(BaseComponent):
             self.marginal_stacked,
             self.marginal_kde,
             pn.layout.Divider(),
+            # 2D heatmap
+            self.heatmap_toggle,
+            self.heatmap_bins_slider,
+            pn.layout.Divider(),
             # Plot settings
             pn.Card(
                 self.alpha_slider,
@@ -1099,6 +1166,8 @@ class ScatterPlot(BaseComponent):
             show_marginals=self.marginal_toggle,
             marginal_stacked=self.marginal_stacked,
             marginal_kde=self.marginal_kde,
+            show_heatmap=self.heatmap_toggle,
+            heatmap_bins=self.heatmap_bins_slider,
         )
 
         # Side-by-side layout: controls on left, plot on right
