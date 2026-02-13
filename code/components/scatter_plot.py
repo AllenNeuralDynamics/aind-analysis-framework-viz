@@ -220,10 +220,9 @@ class ScatterPlot(BaseComponent):
         self._toggle_color_controls(None)
 
         # Marginal distributions toggle
-        self.marginal_toggle = pn.widgets.Toggle(
+        self.marginal_toggle = pn.widgets.Checkbox(
             name="Marginal distributions",
             value=True,
-            button_type="light",
             width=180,
         )
 
