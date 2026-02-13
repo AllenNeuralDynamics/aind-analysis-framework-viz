@@ -134,6 +134,7 @@ class ScatterPlot(BaseComponent):
         location.sync(self.marginal_stacked, {"value": "sp_mstk"})
         location.sync(self.marginal_kde, {"value": "sp_mkde"})
         location.sync(self.marginal_bins_slider, {"value": "sp_mbin"})
+        location.sync(self.marginal_normalize, {"value": "sp_mnorm"})
         location.sync(self.heatmap_toggle, {"value": "sp_hm"})
         location.sync(self.heatmap_bins_slider, {"value": "sp_hmb"})
         location.sync(self.heatmap_hide_dots, {"value": "sp_hmhd"})
@@ -250,6 +251,11 @@ class ScatterPlot(BaseComponent):
             value=25,
             width=180,
         )
+        self.marginal_normalize = pn.widgets.Checkbox(
+            name="Normalize",
+            value=False,
+            width=180,
+        )
         self.marginal_toggle.param.watch(self._toggle_marginal_controls, "value")
         self._toggle_marginal_controls(None)
 
@@ -337,6 +343,7 @@ class ScatterPlot(BaseComponent):
         self.marginal_stacked.visible = show
         self.marginal_kde.visible = show
         self.marginal_bins_slider.visible = show
+        self.marginal_normalize.visible = show
 
     def _toggle_heatmap_controls(self, _event) -> None:
         """Toggle heatmap sub-controls based on heatmap toggle."""
@@ -508,6 +515,7 @@ class ScatterPlot(BaseComponent):
         marginal_stacked: bool = True,
         marginal_kde: bool = False,
         marginal_bins: int = 25,
+        marginal_normalize: bool = False,
         show_heatmap: bool = False,
         heatmap_bins: int = 30,
         heatmap_hide_dots: bool = False,
@@ -938,6 +946,10 @@ class ScatterPlot(BaseComponent):
             if not mask.any():
                 continue
             hist, _ = np.histogram(x_numeric[mask].values, bins=x_edges)
+            hist = hist.astype(float)
+            if marginal_normalize and hist.sum() > 0:
+                bin_width = x_edges[1] - x_edges[0]
+                hist = hist / (hist.sum() * bin_width)
             if marginal_stacked:
                 p_top.quad(
                     top=x_bottom + hist,
@@ -973,10 +985,10 @@ class ScatterPlot(BaseComponent):
                     kde = gaussian_kde(vals)
                     x_grid = np.linspace(x_all.min(), x_all.max(), 200)
                     density = kde(x_grid)
-                    # Scale density to match histogram counts
-                    bin_width = x_edges[1] - x_edges[0]
-                    density_scaled = density * len(vals) * bin_width
-                    p_top.line(x_grid, density_scaled, line_color=color, line_width=2)
+                    if not marginal_normalize:
+                        bin_width = x_edges[1] - x_edges[0]
+                        density = density * len(vals) * bin_width
+                    p_top.line(x_grid, density, line_color=color, line_width=2)
                 except Exception:
                     pass
 
@@ -1001,6 +1013,10 @@ class ScatterPlot(BaseComponent):
             if not mask.any():
                 continue
             hist, _ = np.histogram(y_numeric[mask].values, bins=y_edges)
+            hist = hist.astype(float)
+            if marginal_normalize and hist.sum() > 0:
+                bin_width = y_edges[1] - y_edges[0]
+                hist = hist / (hist.sum() * bin_width)
             if marginal_stacked:
                 p_right.quad(
                     top=y_edges[1:],
@@ -1036,9 +1052,10 @@ class ScatterPlot(BaseComponent):
                     kde = gaussian_kde(vals)
                     y_grid = np.linspace(y_all.min(), y_all.max(), 200)
                     density = kde(y_grid)
-                    bin_width = y_edges[1] - y_edges[0]
-                    density_scaled = density * len(vals) * bin_width
-                    p_right.line(density_scaled, y_grid, line_color=color, line_width=2)
+                    if not marginal_normalize:
+                        bin_width = y_edges[1] - y_edges[0]
+                        density = density * len(vals) * bin_width
+                    p_right.line(density, y_grid, line_color=color, line_width=2)
                 except Exception:
                     pass
 
@@ -1077,6 +1094,7 @@ class ScatterPlot(BaseComponent):
         marginal_stacked: bool = True,
         marginal_kde: bool = False,
         marginal_bins: int = 25,
+        marginal_normalize: bool = False,
         show_heatmap: bool = False,
         heatmap_bins: int = 30,
         heatmap_hide_dots: bool = False,
@@ -1121,6 +1139,7 @@ class ScatterPlot(BaseComponent):
                 marginal_stacked,
                 marginal_kde,
                 marginal_bins,
+                marginal_normalize,
                 show_heatmap,
                 heatmap_bins,
                 heatmap_hide_dots,
@@ -1166,6 +1185,7 @@ class ScatterPlot(BaseComponent):
             self.marginal_toggle,
             self.marginal_bins_slider,
             self.marginal_stacked,
+            self.marginal_normalize,
             self.marginal_kde,
             pn.layout.Divider(),
             # 2D heatmap
@@ -1212,6 +1232,7 @@ class ScatterPlot(BaseComponent):
             marginal_stacked=self.marginal_stacked,
             marginal_kde=self.marginal_kde,
             marginal_bins=self.marginal_bins_slider,
+            marginal_normalize=self.marginal_normalize,
             show_heatmap=self.heatmap_toggle,
             heatmap_bins=self.heatmap_bins_slider,
             heatmap_hide_dots=self.heatmap_hide_dots,
