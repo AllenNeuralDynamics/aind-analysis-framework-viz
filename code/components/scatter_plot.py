@@ -135,6 +135,7 @@ class ScatterPlot(BaseComponent):
         location.sync(self.marginal_kde, {"value": "sp_mkde"})
         location.sync(self.heatmap_toggle, {"value": "sp_hm"})
         location.sync(self.heatmap_bins_slider, {"value": "sp_hmb"})
+        location.sync(self.heatmap_hide_dots, {"value": "sp_hmhd"})
 
     def _init_controls(self) -> None:
         """Initialize control widgets for the scatter plot."""
@@ -256,6 +257,11 @@ class ScatterPlot(BaseComponent):
             value=30,
             width=180,
         )
+        self.heatmap_hide_dots = pn.widgets.Checkbox(
+            name="Hide dots",
+            value=False,
+            width=180,
+        )
         self.heatmap_toggle.param.watch(self._toggle_heatmap_controls, "value")
         self._toggle_heatmap_controls(None)
 
@@ -315,7 +321,9 @@ class ScatterPlot(BaseComponent):
 
     def _toggle_heatmap_controls(self, _event) -> None:
         """Toggle heatmap sub-controls based on heatmap toggle."""
-        self.heatmap_bins_slider.visible = self.heatmap_toggle.value
+        show = self.heatmap_toggle.value
+        self.heatmap_bins_slider.visible = show
+        self.heatmap_hide_dots.visible = show
 
     def _toggle_size_controls(self, _event) -> None:
         """Toggle size controls based on size-by selection."""
@@ -481,6 +489,7 @@ class ScatterPlot(BaseComponent):
         marginal_kde: bool = False,
         show_heatmap: bool = False,
         heatmap_bins: int = 30,
+        heatmap_hide_dots: bool = False,
     ):
         """Create the Bokeh scatter plot figure."""
         scatter_config = self.config.scatter_plot
@@ -781,6 +790,11 @@ class ScatterPlot(BaseComponent):
                 )
                 scatter_renderers.append(legend_renderer)
 
+        # Hide dots when heatmap is on and user opted to hide them
+        if show_heatmap and heatmap_hide_dots:
+            for renderer in scatter_renderers:
+                renderer.visible = False
+
         # Add hover tool
         hover = HoverTool(
             tooltips=self._build_tooltip_html(),
@@ -1042,6 +1056,7 @@ class ScatterPlot(BaseComponent):
         marginal_kde: bool = False,
         show_heatmap: bool = False,
         heatmap_bins: int = 30,
+        heatmap_hide_dots: bool = False,
     ):
         """Render the scatter plot with current settings."""
         try:
@@ -1083,6 +1098,7 @@ class ScatterPlot(BaseComponent):
                 marginal_kde,
                 show_heatmap,
                 heatmap_bins,
+                heatmap_hide_dots,
             )
         except Exception as e:
             logger.error(f"Error rendering scatter plot: {e}")
@@ -1128,6 +1144,7 @@ class ScatterPlot(BaseComponent):
             # 2D heatmap
             self.heatmap_toggle,
             self.heatmap_bins_slider,
+            self.heatmap_hide_dots,
             pn.layout.Divider(),
             # Plot settings
             pn.Card(
@@ -1168,6 +1185,7 @@ class ScatterPlot(BaseComponent):
             marginal_kde=self.marginal_kde,
             show_heatmap=self.heatmap_toggle,
             heatmap_bins=self.heatmap_bins_slider,
+            heatmap_hide_dots=self.heatmap_hide_dots,
         )
 
         # Side-by-side layout: controls on left, plot on right
