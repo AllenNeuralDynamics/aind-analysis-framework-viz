@@ -1411,6 +1411,13 @@ class ScatterPlot(BaseComponent):
         heatmap_hide_dots: bool = False,
         heatmap_alpha: float = 0.6,
         heatmap_smooth: float = 0.0,
+        aggr_group: bool = False,
+        aggr_group_method: str = "lowess",
+        aggr_all: bool = False,
+        aggr_all_method: str = "mean +/- sem",
+        aggr_quantiles: bool = False,
+        aggr_n_quantiles: int = 20,
+        aggr_smooth_factor: int = 5,
     ):
         """Render the scatter plot with current settings."""
         try:
