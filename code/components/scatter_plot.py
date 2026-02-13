@@ -139,6 +139,7 @@ class ScatterPlot(BaseComponent):
         location.sync(self.heatmap_bins_slider, {"value": "sp_hmb"})
         location.sync(self.heatmap_hide_dots, {"value": "sp_hmhd"})
         location.sync(self.heatmap_alpha_slider, {"value": "sp_hma"})
+        location.sync(self.heatmap_smooth_slider, {"value": "sp_hms"})
 
     def _init_controls(self) -> None:
         """Initialize control widgets for the scatter plot."""
@@ -286,6 +287,14 @@ class ScatterPlot(BaseComponent):
             value=0.6,
             width=180,
         )
+        self.heatmap_smooth_slider = pn.widgets.FloatSlider(
+            name="Smoothing (sigma)",
+            start=0.0,
+            end=5.0,
+            step=0.5,
+            value=0.0,
+            width=180,
+        )
         self.heatmap_toggle.param.watch(self._toggle_heatmap_controls, "value")
         self._toggle_heatmap_controls(None)
 
@@ -351,6 +360,7 @@ class ScatterPlot(BaseComponent):
         self.heatmap_bins_slider.visible = show
         self.heatmap_hide_dots.visible = show
         self.heatmap_alpha_slider.visible = show
+        self.heatmap_smooth_slider.visible = show
 
     def _toggle_size_controls(self, _event) -> None:
         """Toggle size controls based on size-by selection."""
@@ -520,6 +530,7 @@ class ScatterPlot(BaseComponent):
         heatmap_bins: int = 30,
         heatmap_hide_dots: bool = False,
         heatmap_alpha: float = 0.6,
+        heatmap_smooth: float = 0.0,
     ):
         """Create the Bokeh scatter plot figure."""
         scatter_config = self.config.scatter_plot
@@ -669,9 +680,13 @@ class ScatterPlot(BaseComponent):
                     x_vals, y_vals, bins=int(heatmap_bins)
                 )
                 # Transpose so rows=y, cols=x for Bokeh image
-                heatmap_data = heatmap_data.T
+                heatmap_data = heatmap_data.T.astype(float)
+                # Apply gaussian smoothing if sigma > 0
+                if heatmap_smooth > 0:
+                    from scipy.ndimage import gaussian_filter
+
+                    heatmap_data = gaussian_filter(heatmap_data, sigma=heatmap_smooth)
                 # Mask zero bins as NaN so they're transparent
-                heatmap_data = heatmap_data.astype(float)
                 heatmap_data[heatmap_data == 0] = np.nan
                 from bokeh.palettes import Turbo256
 
@@ -1144,6 +1159,7 @@ class ScatterPlot(BaseComponent):
                 heatmap_bins,
                 heatmap_hide_dots,
                 heatmap_alpha,
+                heatmap_smooth,
             )
         except Exception as e:
             logger.error(f"Error rendering scatter plot: {e}")
@@ -1191,6 +1207,7 @@ class ScatterPlot(BaseComponent):
             # 2D heatmap
             self.heatmap_toggle,
             self.heatmap_bins_slider,
+            self.heatmap_smooth_slider,
             self.heatmap_alpha_slider,
             self.heatmap_hide_dots,
             pn.layout.Divider(),
@@ -1237,6 +1254,7 @@ class ScatterPlot(BaseComponent):
             heatmap_bins=self.heatmap_bins_slider,
             heatmap_hide_dots=self.heatmap_hide_dots,
             heatmap_alpha=self.heatmap_alpha_slider,
+            heatmap_smooth=self.heatmap_smooth_slider,
         )
 
         # Side-by-side layout: controls on left, plot on right
