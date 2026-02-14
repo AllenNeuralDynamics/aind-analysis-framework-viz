@@ -8,6 +8,7 @@ from .data_table import DataTable
 from .docdb_query import DocDBQueryPanel
 from .filter_panel import FilterPanel
 from .log_console import LogConsole
+from .pair_plot import PairPlot
 from .scatter_plot import ScatterPlot
 from .sidebar import LoadDataPanel, StatsPanel
 from .size_mapping import determine_size_mapping
@@ -21,6 +22,7 @@ __all__ = [
     "FilterPanel",
     "LoadDataPanel",
     "LogConsole",
+    "PairPlot",
     "ScatterPlot",
     "StatsPanel",
     "add_color_bar",

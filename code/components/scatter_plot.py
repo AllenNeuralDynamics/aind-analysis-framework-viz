@@ -36,6 +36,162 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def compute_aggregation(
+    x: np.ndarray,
+    y: np.ndarray,
+    method: str,
+    smooth_factor: int = 5,
+    use_quantiles: bool = False,
+    n_quantiles: int = 20,
+) -> dict:
+    """Compute aggregation curves for x/y data.
+
+    Returns dict with keys:
+    - 'x': x values for the curve
+    - 'y': y values for the curve
+    - 'y_upper': upper bound (for mean +/- sem)
+    - 'y_lower': lower bound (for mean +/- sem)
+    - 'r2': R-squared (for linear fit)
+    - 'p': p-value (for linear fit)
+    """
+    if len(x) < 2:
+        return {}
+
+    # Sort by x
+    sort_idx = np.argsort(x)
+    x_sorted = x[sort_idx]
+    y_sorted = y[sort_idx]
+
+    # Remove NaN
+    valid = np.isfinite(x_sorted) & np.isfinite(y_sorted)
+    x_sorted = x_sorted[valid]
+    y_sorted = y_sorted[valid]
+    if len(x_sorted) < 2:
+        return {}
+
+    if use_quantiles:
+        # Bin x into quantiles and compute stats per bin
+        quantile_edges = np.quantile(x_sorted, np.linspace(0, 1, n_quantiles + 1))
+        bin_indices = np.digitize(x_sorted, quantile_edges[1:-1])
+        x_binned = []
+        y_binned = []
+        y_sem = []
+        for i in range(n_quantiles):
+            mask = bin_indices == i
+            if mask.sum() == 0:
+                continue
+            x_binned.append(np.mean(x_sorted[mask]))
+            y_binned.append(np.mean(y_sorted[mask]))
+            y_sem.append(
+                np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
+                if mask.sum() > 1
+                else 0
+            )
+        x_sorted = np.array(x_binned)
+        y_sorted = np.array(y_binned)
+        y_sem_arr = np.array(y_sem)
+        if len(x_sorted) < 2:
+            return {}
+
+    if method in ("mean", "mean +/- sem"):
+        # Detect discrete x: use exact grouping unless user explicitly requests quantile binning
+        unique_x = np.unique(x_sorted)
+        is_discrete = not use_quantiles and len(unique_x) <= max(n_quantiles, 50)
+
+        if is_discrete:
+            # Group by exact x values
+            x_means, y_means, y_sems = [], [], []
+            for xval in unique_x:
+                mask = x_sorted == xval
+                x_means.append(xval)
+                y_means.append(np.mean(y_sorted[mask]))
+                y_sems.append(
+                    np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
+                    if mask.sum() > 1
+                    else 0
+                )
+        elif use_quantiles:
+            # Already binned above into quantiles
+            if method == "mean":
+                return {"x": x_sorted, "y": y_sorted}
+            else:
+                return {
+                    "x": x_sorted,
+                    "y": y_sorted,
+                    "y_upper": y_sorted + y_sem_arr,
+                    "y_lower": y_sorted - y_sem_arr,
+                }
+        else:
+            # Equal-width bins
+            n_bins = max(2, n_quantiles)
+            bin_edges = np.linspace(x_sorted.min(), x_sorted.max(), n_bins + 1)
+            bin_idx = np.digitize(x_sorted, bin_edges[1:-1])
+            x_means, y_means, y_sems = [], [], []
+            for i in range(n_bins):
+                mask = bin_idx == i
+                if mask.sum() > 0:
+                    x_means.append(np.mean(x_sorted[mask]))
+                    y_means.append(np.mean(y_sorted[mask]))
+                    y_sems.append(
+                        np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
+                        if mask.sum() > 1
+                        else 0
+                    )
+
+        x_arr = np.array(x_means)
+        y_arr = np.array(y_means)
+        if method == "mean":
+            return {"x": x_arr, "y": y_arr}
+        sem_arr = np.array(y_sems)
+        return {
+            "x": x_arr,
+            "y": y_arr,
+            "y_upper": y_arr + sem_arr,
+            "y_lower": y_arr - sem_arr,
+        }
+
+    elif method == "lowess":
+        # Gaussian-weighted local regression (no statsmodels dependency)
+        # smooth_factor (1-20) maps to bandwidth as fraction of x range:
+        # 1 -> 1% (very local), 20 -> 20% (very smooth)
+        x_range = x_sorted.max() - x_sorted.min()
+        if x_range == 0:
+            return {}
+        bandwidth = (smooth_factor / 100.0) * x_range
+        n_points = min(200, len(x_sorted))
+        x_grid = np.linspace(x_sorted.min(), x_sorted.max(), n_points)
+        y_smooth = np.empty(n_points)
+        for i, xi in enumerate(x_grid):
+            weights = np.exp(-0.5 * ((x_sorted - xi) / bandwidth) ** 2)
+            w_sum = weights.sum()
+            if w_sum > 0:
+                y_smooth[i] = np.average(y_sorted, weights=weights)
+            else:
+                y_smooth[i] = np.nan
+        return {"x": x_grid, "y": y_smooth}
+
+    elif method == "running average":
+        window = max(1, smooth_factor)
+        if len(y_sorted) < window:
+            return {"x": x_sorted, "y": y_sorted}
+        kernel = np.ones(window) / window
+        y_smooth = np.convolve(y_sorted, kernel, mode="valid")
+        # Trim x to match
+        offset = (window - 1) // 2
+        x_smooth = x_sorted[offset : offset + len(y_smooth)]
+        return {"x": x_smooth, "y": y_smooth}
+
+    elif method == "linear fit":
+        from scipy import stats
+
+        slope, intercept, r_value, p_value, _std_err = stats.linregress(x_sorted, y_sorted)
+        x_fit = np.array([x_sorted.min(), x_sorted.max()])
+        y_fit = slope * x_fit + intercept
+        return {"x": x_fit, "y": y_fit, "r2": r_value**2, "p": p_value}
+
+    return {}
+
+
 class ScatterPlot(BaseComponent):
     """
     Interactive scatter plot component with configurable axes and styling.
@@ -666,150 +822,8 @@ class ScatterPlot(BaseComponent):
         use_quantiles: bool = False,
         n_quantiles: int = 20,
     ) -> dict:
-        """Compute aggregation curves for x/y data.
-
-        Returns dict with keys:
-        - 'x': x values for the curve
-        - 'y': y values for the curve
-        - 'y_upper': upper bound (for mean +/- sem)
-        - 'y_lower': lower bound (for mean +/- sem)
-        """
-        if len(x) < 2:
-            return {}
-
-        # Sort by x
-        sort_idx = np.argsort(x)
-        x_sorted = x[sort_idx]
-        y_sorted = y[sort_idx]
-
-        # Remove NaN
-        valid = np.isfinite(x_sorted) & np.isfinite(y_sorted)
-        x_sorted = x_sorted[valid]
-        y_sorted = y_sorted[valid]
-        if len(x_sorted) < 2:
-            return {}
-
-        if use_quantiles:
-            # Bin x into quantiles and compute stats per bin
-            quantile_edges = np.quantile(x_sorted, np.linspace(0, 1, n_quantiles + 1))
-            bin_indices = np.digitize(x_sorted, quantile_edges[1:-1])
-            x_binned = []
-            y_binned = []
-            y_sem = []
-            for i in range(n_quantiles):
-                mask = bin_indices == i
-                if mask.sum() == 0:
-                    continue
-                x_binned.append(np.mean(x_sorted[mask]))
-                y_binned.append(np.mean(y_sorted[mask]))
-                y_sem.append(
-                    np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
-                    if mask.sum() > 1
-                    else 0
-                )
-            x_sorted = np.array(x_binned)
-            y_sorted = np.array(y_binned)
-            y_sem_arr = np.array(y_sem)
-            if len(x_sorted) < 2:
-                return {}
-
-        if method in ("mean", "mean +/- sem"):
-            # Detect discrete x: use exact grouping unless user explicitly requests quantile binning
-            unique_x = np.unique(x_sorted)
-            is_discrete = not use_quantiles and len(unique_x) <= max(n_quantiles, 50)
-
-            if is_discrete:
-                # Group by exact x values
-                x_means, y_means, y_sems = [], [], []
-                for xval in unique_x:
-                    mask = x_sorted == xval
-                    x_means.append(xval)
-                    y_means.append(np.mean(y_sorted[mask]))
-                    y_sems.append(
-                        np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
-                        if mask.sum() > 1
-                        else 0
-                    )
-            elif use_quantiles:
-                # Already binned above into quantiles
-                if method == "mean":
-                    return {"x": x_sorted, "y": y_sorted}
-                else:
-                    return {
-                        "x": x_sorted,
-                        "y": y_sorted,
-                        "y_upper": y_sorted + y_sem_arr,
-                        "y_lower": y_sorted - y_sem_arr,
-                    }
-            else:
-                # Equal-width bins
-                n_bins = max(2, n_quantiles)
-                bin_edges = np.linspace(x_sorted.min(), x_sorted.max(), n_bins + 1)
-                bin_idx = np.digitize(x_sorted, bin_edges[1:-1])
-                x_means, y_means, y_sems = [], [], []
-                for i in range(n_bins):
-                    mask = bin_idx == i
-                    if mask.sum() > 0:
-                        x_means.append(np.mean(x_sorted[mask]))
-                        y_means.append(np.mean(y_sorted[mask]))
-                        y_sems.append(
-                            np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
-                            if mask.sum() > 1
-                            else 0
-                        )
-
-            x_arr = np.array(x_means)
-            y_arr = np.array(y_means)
-            if method == "mean":
-                return {"x": x_arr, "y": y_arr}
-            sem_arr = np.array(y_sems)
-            return {
-                "x": x_arr,
-                "y": y_arr,
-                "y_upper": y_arr + sem_arr,
-                "y_lower": y_arr - sem_arr,
-            }
-
-        elif method == "lowess":
-            # Gaussian-weighted local regression (no statsmodels dependency)
-            # smooth_factor (1-20) maps to bandwidth as fraction of x range:
-            # 1 -> 1% (very local), 20 -> 20% (very smooth)
-            x_range = x_sorted.max() - x_sorted.min()
-            if x_range == 0:
-                return {}
-            bandwidth = (smooth_factor / 100.0) * x_range
-            n_points = min(200, len(x_sorted))
-            x_grid = np.linspace(x_sorted.min(), x_sorted.max(), n_points)
-            y_smooth = np.empty(n_points)
-            for i, xi in enumerate(x_grid):
-                weights = np.exp(-0.5 * ((x_sorted - xi) / bandwidth) ** 2)
-                w_sum = weights.sum()
-                if w_sum > 0:
-                    y_smooth[i] = np.average(y_sorted, weights=weights)
-                else:
-                    y_smooth[i] = np.nan
-            return {"x": x_grid, "y": y_smooth}
-
-        elif method == "running average":
-            window = max(1, smooth_factor)
-            if len(y_sorted) < window:
-                return {"x": x_sorted, "y": y_sorted}
-            kernel = np.ones(window) / window
-            y_smooth = np.convolve(y_sorted, kernel, mode="valid")
-            # Trim x to match
-            offset = (window - 1) // 2
-            x_smooth = x_sorted[offset : offset + len(y_smooth)]
-            return {"x": x_smooth, "y": y_smooth}
-
-        elif method == "linear fit":
-            from scipy import stats
-
-            slope, intercept, r_value, p_value, _std_err = stats.linregress(x_sorted, y_sorted)
-            x_fit = np.array([x_sorted.min(), x_sorted.max()])
-            y_fit = slope * x_fit + intercept
-            return {"x": x_fit, "y": y_fit, "r2": r_value**2, "p": p_value}
-
-        return {}
+        """Compute aggregation curves for x/y data. Delegates to module-level function."""
+        return compute_aggregation(x, y, method, smooth_factor, use_quantiles, n_quantiles)
 
     def _render_aggr_on_figure(
         self,
