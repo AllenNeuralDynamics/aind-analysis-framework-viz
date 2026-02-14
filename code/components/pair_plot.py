@@ -311,12 +311,6 @@ class PairPlot(BaseComponent):
             value=False,
             width=180,
         )
-        self.clear_selection_button = pn.widgets.Button(
-            name="Clear Selection",
-            button_type="warning",
-            width=180,
-        )
-        self.clear_selection_button.on_click(self._clear_selection)
 
     def _toggle_size_controls(self, _event) -> None:
         is_uniform = self.size_select.value in ("---", None, "")
@@ -355,16 +349,6 @@ class PairPlot(BaseComponent):
             self.aggr_n_quantiles.name = "Number of quantiles"
         else:
             self.aggr_n_quantiles.name = "Number of bins"
-
-    def _clear_selection(self, _event) -> None:
-        """Clear all selections across pair plot and DataHolder."""
-        self._syncing_selection = True
-        try:
-            for source in self._sources:
-                source.selected.indices = []
-        finally:
-            self._syncing_selection = False
-        self.data_holder.selected_record_ids = []
 
     def _update_column_options(self, df: pd.DataFrame) -> None:
         """Update dropdown options based on available columns."""
@@ -723,6 +707,7 @@ class PairPlot(BaseComponent):
                     size="size", alpha=alpha, color=color_spec, marker="circle",
                     line_color="#333333", line_width=0.5,
                     selection_line_color="black", selection_line_width=2,
+                    nonselection_alpha=0.1,
                 )
                 scatter_renderers.append(renderer)
                 self._sources.append(group_source)
@@ -736,6 +721,7 @@ class PairPlot(BaseComponent):
                 size="size", alpha=alpha, color=color_spec, marker="circle",
                 line_color="#333333", line_width=0.5,
                 selection_line_color="black", selection_line_width=2,
+                nonselection_alpha=0.1,
             )
             scatter_renderers.append(renderer)
             self._sources.append(source)
@@ -935,7 +921,6 @@ class PairPlot(BaseComponent):
     def create(self) -> pn.viewable.Viewable:
         """Create the pair plot component with controls."""
         controls = pn.Column(
-            self.clear_selection_button,
             self.columns_select,
             pn.layout.Divider(),
             self.color_select,

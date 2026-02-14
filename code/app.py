@@ -85,6 +85,13 @@ class AINDAnalysisFrameworkApp(BaseApp):
             sizing_mode="stretch_width",
         )
 
+        self.clear_selection_button = pn.widgets.Button(
+            name="Clear Selection",
+            button_type="warning",
+            sizing_mode="stretch_width",
+        )
+        self.clear_selection_button.on_click(self._clear_selection)
+
         self.asset_columns_select = pn.widgets.IntSlider(
             name="Asset Columns",
             start=1,
@@ -362,6 +369,11 @@ class AINDAnalysisFrameworkApp(BaseApp):
             logger.error(f"Query string was: '{query_string}'")
             return f"Query error: {e}"
 
+    def _clear_selection(self, _event=None):
+        """Clear all selections globally."""
+        self.data_holder.selected_record_ids = []
+        self._clear_table_selection()
+
     def _clear_table_selection(self):
         """Clear the table widget's selection to update URL."""
         data_table = self._components.get("data_table")
@@ -497,6 +509,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
             self._components["filter_panel"].create(),
             pn.layout.Divider(),
             self._components["stats_panel"].create(),
+            self.clear_selection_button,
             pn.layout.Divider(),
             credits,
             pn.layout.Divider(),
