@@ -643,10 +643,12 @@ class ScatterPlot(BaseComponent):
 
         elif method == "lowess":
             # Gaussian-weighted local regression (no statsmodels dependency)
+            # smooth_factor (1-20) maps to bandwidth as fraction of x range:
+            # 1 -> 1% (very local), 20 -> 20% (very smooth)
             x_range = x_sorted.max() - x_sorted.min()
             if x_range == 0:
                 return {}
-            bandwidth = max(0.01, smooth_factor / len(x_sorted)) * x_range
+            bandwidth = (smooth_factor / 100.0) * x_range
             n_points = min(200, len(x_sorted))
             x_grid = np.linspace(x_sorted.min(), x_sorted.max(), n_points)
             y_smooth = np.empty(n_points)
