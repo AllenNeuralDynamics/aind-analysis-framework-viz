@@ -642,14 +642,22 @@ class ScatterPlot(BaseComponent):
             }
 
         elif method == "lowess":
-            try:
-                import statsmodels.api as sm
-
-                frac = max(0.05, min(1.0, smooth_factor / len(x_sorted)))
-                result = sm.nonparametric.lowess(y_sorted, x_sorted, frac=frac)
-                return {"x": result[:, 0], "y": result[:, 1]}
-            except ImportError:
+            # Gaussian-weighted local regression (no statsmodels dependency)
+            x_range = x_sorted.max() - x_sorted.min()
+            if x_range == 0:
                 return {}
+            bandwidth = max(0.01, smooth_factor / len(x_sorted)) * x_range
+            n_points = min(200, len(x_sorted))
+            x_grid = np.linspace(x_sorted.min(), x_sorted.max(), n_points)
+            y_smooth = np.empty(n_points)
+            for i, xi in enumerate(x_grid):
+                weights = np.exp(-0.5 * ((x_sorted - xi) / bandwidth) ** 2)
+                w_sum = weights.sum()
+                if w_sum > 0:
+                    y_smooth[i] = np.average(y_sorted, weights=weights)
+                else:
+                    y_smooth[i] = np.nan
+            return {"x": x_grid, "y": y_smooth}
 
         elif method == "running average":
             window = max(1, smooth_factor)
