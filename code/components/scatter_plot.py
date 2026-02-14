@@ -187,8 +187,8 @@ class ScatterPlot(BaseComponent):
         )
         self.group_applies_to = pn.widgets.Select(
             name="Group applies to",
-            options=["Color and Shape", "Color", "Shape"],
-            value="Color and Shape",
+            options=["Color", "Shape", "Color and Shape"],
+            value="Color",
             width=180,
             visible=False,
         )
@@ -802,10 +802,12 @@ class ScatterPlot(BaseComponent):
             return {"x": x_smooth, "y": y_smooth}
 
         elif method == "linear fit":
-            coeffs = np.polyfit(x_sorted, y_sorted, 1)
+            from scipy import stats
+
+            slope, intercept, r_value, p_value, _std_err = stats.linregress(x_sorted, y_sorted)
             x_fit = np.array([x_sorted.min(), x_sorted.max()])
-            y_fit = np.polyval(coeffs, x_fit)
-            return {"x": x_fit, "y": y_fit}
+            y_fit = slope * x_fit + intercept
+            return {"x": x_fit, "y": y_fit, "r2": r_value**2, "p": p_value}
 
         return {}
 
@@ -858,7 +860,13 @@ class ScatterPlot(BaseComponent):
                 if not result:
                     continue
 
-                p.line(result["x"], result["y"], line_color=color, line_width=aggr_line_width, line_alpha=0.9)
+                line_kwargs = {"line_color": color, "line_width": aggr_line_width, "line_alpha": 0.9}
+                if "p" in result and "r2" in result:
+                    line_kwargs["line_dash"] = "solid" if result["p"] < 0.05 else "dashed"
+                    stars = "***" if result["p"] < 0.001 else "**" if result["p"] < 0.01 else "*" if result["p"] < 0.05 else ""
+                    label = f"{group} (R²={result['r2']:.3f}, p={result['p']:.2e}{stars})"
+                    line_kwargs["legend_label"] = label
+                p.line(result["x"], result["y"], **line_kwargs)
                 if "y_upper" in result and "y_lower" in result:
                     band_source = CDS(
                         data={"x": result["x"], "upper": result["y_upper"], "lower": result["y_lower"]}
@@ -879,10 +887,16 @@ class ScatterPlot(BaseComponent):
                 aggr_all_quantiles, aggr_all_n_quantiles,
             )
             if result:
-                p.line(
-                    result["x"], result["y"],
-                    line_color="black", line_width=aggr_line_width * 1.5, line_alpha=0.9,
-                )
+                all_line_kwargs = {
+                    "line_color": "black",
+                    "line_width": aggr_line_width * 1.5,
+                    "line_alpha": 0.9,
+                }
+                if "p" in result and "r2" in result:
+                    all_line_kwargs["line_dash"] = "solid" if result["p"] < 0.05 else "dashed"
+                    stars = "***" if result["p"] < 0.001 else "**" if result["p"] < 0.01 else "*" if result["p"] < 0.05 else ""
+                    all_line_kwargs["legend_label"] = f"All (R²={result['r2']:.3f}, p={result['p']:.2e}{stars})"
+                p.line(result["x"], result["y"], **all_line_kwargs)
                 if "y_upper" in result and "y_lower" in result:
                     band_source = CDS(
                         data={"x": result["x"], "upper": result["y_upper"], "lower": result["y_lower"]}
