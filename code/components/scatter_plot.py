@@ -1135,44 +1135,6 @@ class ScatterPlot(BaseComponent):
             active_scroll="wheel_zoom",
         )
 
-        # 2D heatmap overlay (rendered first so scatter points appear on top)
-        if show_heatmap and not x_is_datetime and not y_is_datetime:
-            x_hm = pd.to_numeric(df_valid[x_col], errors="coerce").dropna()
-            y_hm = pd.to_numeric(df_valid[y_col], errors="coerce").dropna()
-            common_idx = x_hm.index.intersection(y_hm.index)
-            if len(common_idx) >= 2:
-                x_vals = x_hm.loc[common_idx].values
-                y_vals = y_hm.loc[common_idx].values
-                heatmap_data, xedges, yedges = np.histogram2d(
-                    x_vals, y_vals, bins=int(heatmap_bins)
-                )
-                # Transpose so rows=y, cols=x for Bokeh image
-                heatmap_data = heatmap_data.T.astype(float)
-                # Apply gaussian smoothing if sigma > 0
-                if heatmap_smooth > 0:
-                    from scipy.ndimage import gaussian_filter
-
-                    heatmap_data = gaussian_filter(heatmap_data, sigma=heatmap_smooth)
-                # Mask zero bins as NaN so they're transparent
-                heatmap_data[heatmap_data == 0] = np.nan
-                from bokeh.palettes import Turbo256
-
-                hm_mapper = LinearColorMapper(
-                    palette=Turbo256,
-                    low=np.nanmin(heatmap_data),
-                    high=np.nanmax(heatmap_data),
-                    nan_color=(0, 0, 0, 0),
-                )
-                p.image(
-                    image=[heatmap_data],
-                    x=xedges[0],
-                    y=yedges[0],
-                    dw=xedges[-1] - xedges[0],
-                    dh=yedges[-1] - yedges[0],
-                    color_mapper=hm_mapper,
-                    global_alpha=heatmap_alpha,
-                )
-
         markers = [
             "circle",
             "square",
@@ -1353,6 +1315,44 @@ class ScatterPlot(BaseComponent):
                 aggr_all_quantiles, aggr_all_n_quantiles, aggr_all_smooth,
                 aggr_line_width,
             )
+
+        # 2D heatmap overlay (rendered on top of scatter points)
+        if show_heatmap and not x_is_datetime and not y_is_datetime:
+            x_hm = pd.to_numeric(df_valid[x_col], errors="coerce").dropna()
+            y_hm = pd.to_numeric(df_valid[y_col], errors="coerce").dropna()
+            common_idx = x_hm.index.intersection(y_hm.index)
+            if len(common_idx) >= 2:
+                x_vals = x_hm.loc[common_idx].values
+                y_vals = y_hm.loc[common_idx].values
+                heatmap_data, xedges, yedges = np.histogram2d(
+                    x_vals, y_vals, bins=int(heatmap_bins)
+                )
+                # Transpose so rows=y, cols=x for Bokeh image
+                heatmap_data = heatmap_data.T.astype(float)
+                # Apply gaussian smoothing if sigma > 0
+                if heatmap_smooth > 0:
+                    from scipy.ndimage import gaussian_filter
+
+                    heatmap_data = gaussian_filter(heatmap_data, sigma=heatmap_smooth)
+                # Mask zero bins as NaN so they're transparent
+                heatmap_data[heatmap_data == 0] = np.nan
+                from bokeh.palettes import Turbo256
+
+                hm_mapper = LinearColorMapper(
+                    palette=Turbo256,
+                    low=np.nanmin(heatmap_data),
+                    high=np.nanmax(heatmap_data),
+                    nan_color=(0, 0, 0, 0),
+                )
+                p.image(
+                    image=[heatmap_data],
+                    x=xedges[0],
+                    y=yedges[0],
+                    dw=xedges[-1] - xedges[0],
+                    dh=yedges[-1] - yedges[0],
+                    color_mapper=hm_mapper,
+                    global_alpha=heatmap_alpha,
+                )
 
         # Add color bar for continuous mappings
         if color_column and not hide_color_bar:
