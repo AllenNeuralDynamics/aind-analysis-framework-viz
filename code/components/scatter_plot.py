@@ -1473,6 +1473,18 @@ class ScatterPlot(BaseComponent):
             shape_col = self.shape_select.value or shape_col
             size_col = self.size_select.value or size_col
 
+            # Hide bins/quantiles controls when x is discrete
+            binned_methods = {"mean", "mean +/- sem"}
+            needs_bins = (
+                (aggr_group and aggr_group_method in binned_methods)
+                or (aggr_all and aggr_all_method in binned_methods)
+            )
+            if needs_bins and df is not None and not df.empty and x_col in df.columns:
+                x_unique = df[x_col].dropna().nunique()
+                is_discrete = not aggr_quantiles and x_unique <= max(aggr_n_quantiles, 50)
+                self.aggr_quantiles_toggle.visible = needs_bins
+                self.aggr_n_quantiles.visible = needs_bins and not is_discrete
+
             plot_width = int(plot_width)
             if group_col not in (None, "", "---") or shape_col not in (None, "", "---"):
                 plot_width += 300
