@@ -615,8 +615,23 @@ class ScatterPlot(BaseComponent):
                 return {}
 
         if method in ("mean", "mean +/- sem"):
-            # Use quantiles (equal-count bins) or equal-width bins
-            if use_quantiles:
+            # Detect discrete x: if unique values <= n_quantiles, group by exact value
+            unique_x = np.unique(x_sorted)
+            is_discrete = len(unique_x) <= n_quantiles
+
+            if is_discrete:
+                # Group by exact x values
+                x_means, y_means, y_sems = [], [], []
+                for xval in unique_x:
+                    mask = x_sorted == xval
+                    x_means.append(xval)
+                    y_means.append(np.mean(y_sorted[mask]))
+                    y_sems.append(
+                        np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
+                        if mask.sum() > 1
+                        else 0
+                    )
+            elif use_quantiles:
                 # Already binned above into quantiles
                 if method == "mean":
                     return {"x": x_sorted, "y": y_sorted}
@@ -627,21 +642,23 @@ class ScatterPlot(BaseComponent):
                         "y_upper": y_sorted + y_sem_arr,
                         "y_lower": y_sorted - y_sem_arr,
                     }
-            # Equal-width bins using n_quantiles as the bin count
-            n_bins = max(2, n_quantiles)
-            bin_edges = np.linspace(x_sorted.min(), x_sorted.max(), n_bins + 1)
-            bin_idx = np.digitize(x_sorted, bin_edges[1:-1])
-            x_means, y_means, y_sems = [], [], []
-            for i in range(n_bins):
-                mask = bin_idx == i
-                if mask.sum() > 0:
-                    x_means.append(np.mean(x_sorted[mask]))
-                    y_means.append(np.mean(y_sorted[mask]))
-                    y_sems.append(
-                        np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
-                        if mask.sum() > 1
-                        else 0
-                    )
+            else:
+                # Equal-width bins
+                n_bins = max(2, n_quantiles)
+                bin_edges = np.linspace(x_sorted.min(), x_sorted.max(), n_bins + 1)
+                bin_idx = np.digitize(x_sorted, bin_edges[1:-1])
+                x_means, y_means, y_sems = [], [], []
+                for i in range(n_bins):
+                    mask = bin_idx == i
+                    if mask.sum() > 0:
+                        x_means.append(np.mean(x_sorted[mask]))
+                        y_means.append(np.mean(y_sorted[mask]))
+                        y_sems.append(
+                            np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
+                            if mask.sum() > 1
+                            else 0
+                        )
+
             x_arr = np.array(x_means)
             y_arr = np.array(y_means)
             if method == "mean":
