@@ -119,6 +119,7 @@ class ScatterPlot(BaseComponent):
         location.sync(self.y_select, {"value": "sp_y"})
         location.sync(self.color_select, {"value": "sp_color"})
         location.sync(self.group_select, {"value": "sp_group"})
+        location.sync(self.group_applies_to, {"value": "sp_gapply"})
         location.sync(self.shape_select, {"value": "sp_shape"})
         location.sync(self.size_select, {"value": "sp_size"})
         location.sync(self.palette_select, {"value": "sp_palette"})
@@ -137,16 +138,22 @@ class ScatterPlot(BaseComponent):
         location.sync(self.marginal_normalize, {"value": "sp_mnorm"})
         location.sync(self.heatmap_toggle, {"value": "sp_hm"})
         location.sync(self.heatmap_bins_slider, {"value": "sp_hmb"})
-        location.sync(self.heatmap_hide_dots, {"value": "sp_hmhd"})
+        location.sync(self.hide_dots, {"value": "sp_hdots"})
+        location.sync(self.hide_color_bar, {"value": "sp_hcb"})
+        location.sync(self.marginal_height_slider, {"value": "sp_mh"})
+        location.sync(self.hide_legend, {"value": "sp_hleg"})
         location.sync(self.heatmap_alpha_slider, {"value": "sp_hma"})
         location.sync(self.heatmap_smooth_slider, {"value": "sp_hms"})
         location.sync(self.aggr_group_toggle, {"value": "sp_agrg"})
         location.sync(self.aggr_group_method, {"value": "sp_agrgm"})
+        location.sync(self.aggr_group_quantiles, {"value": "sp_agrgq"})
+        location.sync(self.aggr_group_n_quantiles, {"value": "sp_agrgnq"})
+        location.sync(self.aggr_group_smooth, {"value": "sp_agrgsf"})
         location.sync(self.aggr_all_toggle, {"value": "sp_agra"})
         location.sync(self.aggr_all_method, {"value": "sp_agram"})
-        location.sync(self.aggr_quantiles_toggle, {"value": "sp_agrq"})
-        location.sync(self.aggr_n_quantiles, {"value": "sp_agrnq"})
-        location.sync(self.aggr_smooth_factor, {"value": "sp_agrsf"})
+        location.sync(self.aggr_all_quantiles, {"value": "sp_agraq"})
+        location.sync(self.aggr_all_n_quantiles, {"value": "sp_agranq"})
+        location.sync(self.aggr_all_smooth, {"value": "sp_agrasf"})
 
     def _init_controls(self) -> None:
         """Initialize control widgets for the scatter plot."""
@@ -176,6 +183,13 @@ class ScatterPlot(BaseComponent):
             options=["---"],
             value="---",
             width=180,
+        )
+        self.group_applies_to = pn.widgets.Select(
+            name="Group applies to",
+            options=["Color and Shape", "Color", "Shape"],
+            value="Color and Shape",
+            width=180,
+            visible=False,
         )
         self.shape_select = pn.widgets.Select(
             name="Shape By",
@@ -235,6 +249,11 @@ class ScatterPlot(BaseComponent):
         self.color_select.param.watch(self._toggle_color_controls, "value")
         self._toggle_color_controls(None)
 
+        # Group-applies-to logic: show/hide and disable Color/Shape selectors
+        self.group_select.param.watch(self._toggle_group_applies, "value")
+        self.group_applies_to.param.watch(self._toggle_group_applies, "value")
+        self._toggle_group_applies(None)
+
         # Marginal distributions toggle
         self.marginal_toggle = pn.widgets.Checkbox(
             name="Marginal distributions",
@@ -264,6 +283,14 @@ class ScatterPlot(BaseComponent):
             value=False,
             width=180,
         )
+        self.marginal_height_slider = pn.widgets.IntSlider(
+            name="Histogram height",
+            start=50,
+            end=300,
+            step=10,
+            value=120,
+            width=180,
+        )
         self.marginal_toggle.param.watch(self._toggle_marginal_controls, "value")
         self._toggle_marginal_controls(None)
 
@@ -281,7 +308,7 @@ class ScatterPlot(BaseComponent):
             value=30,
             width=180,
         )
-        self.heatmap_hide_dots = pn.widgets.Checkbox(
+        self.hide_dots = pn.widgets.Checkbox(
             name="Hide dots",
             value=False,
             width=180,
@@ -305,45 +332,36 @@ class ScatterPlot(BaseComponent):
         self.heatmap_toggle.param.watch(self._toggle_heatmap_controls, "value")
         self._toggle_heatmap_controls(None)
 
-        # Aggregation options
+        # Aggregation options — separate settings per group and all
         aggr_methods = ["---", "mean", "mean +/- sem", "lowess", "running average", "linear fit"]
+
+        # Group aggregation
         self.aggr_group_toggle = pn.widgets.Checkbox(
             name="Aggr each group",
             value=False,
             width=180,
         )
         self.aggr_group_method = pn.widgets.Select(
-            name="Aggr method (group)",
+            name="Method (group)",
             options=aggr_methods,
             value="lowess",
             width=180,
         )
-        self.aggr_all_toggle = pn.widgets.Checkbox(
-            name="Aggr all",
+        self.aggr_group_quantiles = pn.widgets.Checkbox(
+            name="Use quantiles of x (group)",
             value=False,
             width=180,
         )
-        self.aggr_all_method = pn.widgets.Select(
-            name="Aggr method (all)",
-            options=aggr_methods,
-            value="mean +/- sem",
-            width=180,
-        )
-        self.aggr_quantiles_toggle = pn.widgets.Checkbox(
-            name="Use quantiles of x",
-            value=False,
-            width=180,
-        )
-        self.aggr_n_quantiles = pn.widgets.IntSlider(
-            name="Number of quantiles",
+        self.aggr_group_n_quantiles = pn.widgets.IntSlider(
+            name="Number of bins (group)",
             start=1,
             end=100,
             step=1,
             value=20,
             width=180,
         )
-        self.aggr_smooth_factor = pn.widgets.IntSlider(
-            name="Smooth factor",
+        self.aggr_group_smooth = pn.widgets.IntSlider(
+            name="Smooth factor (group)",
             start=1,
             end=20,
             step=1,
@@ -351,11 +369,50 @@ class ScatterPlot(BaseComponent):
             width=180,
         )
 
-        self.aggr_group_toggle.param.watch(self._toggle_aggr_controls, "value")
-        self.aggr_all_toggle.param.watch(self._toggle_aggr_controls, "value")
-        self.aggr_quantiles_toggle.param.watch(self._toggle_aggr_controls, "value")
-        self.aggr_group_method.param.watch(self._toggle_aggr_controls, "value")
-        self.aggr_all_method.param.watch(self._toggle_aggr_controls, "value")
+        # All aggregation
+        self.aggr_all_toggle = pn.widgets.Checkbox(
+            name="Aggr all",
+            value=False,
+            width=180,
+        )
+        self.aggr_all_method = pn.widgets.Select(
+            name="Method (all)",
+            options=aggr_methods,
+            value="mean +/- sem",
+            width=180,
+        )
+        self.aggr_all_quantiles = pn.widgets.Checkbox(
+            name="Use quantiles of x (all)",
+            value=False,
+            width=180,
+        )
+        self.aggr_all_n_quantiles = pn.widgets.IntSlider(
+            name="Number of bins (all)",
+            start=1,
+            end=100,
+            step=1,
+            value=20,
+            width=180,
+        )
+        self.aggr_all_smooth = pn.widgets.IntSlider(
+            name="Smooth factor (all)",
+            start=1,
+            end=20,
+            step=1,
+            value=5,
+            width=180,
+        )
+
+        for w in [
+            self.aggr_group_toggle, self.aggr_group_method,
+            self.aggr_group_quantiles, self.aggr_group_n_quantiles,
+            self.aggr_group_smooth,
+            self.aggr_all_toggle, self.aggr_all_method,
+            self.aggr_all_quantiles, self.aggr_all_n_quantiles,
+            self.aggr_all_smooth,
+        ]:
+            w.param.watch(self._toggle_aggr_controls, "value")
+        self.group_select.param.watch(self._toggle_aggr_controls, "value")
         self._toggle_aggr_controls(None)
 
         # Alpha slider
@@ -393,6 +450,16 @@ class ScatterPlot(BaseComponent):
             value=scatter_config.font_size,
             width=180,
         )
+        self.hide_color_bar = pn.widgets.Checkbox(
+            name="Hide color bar",
+            value=False,
+            width=180,
+        )
+        self.hide_legend = pn.widgets.Checkbox(
+            name="Hide legend",
+            value=False,
+            width=180,
+        )
 
     def _get_numeric_columns(self, df: pd.DataFrame) -> list[str]:
         """Get list of numeric columns from DataFrame."""
@@ -410,31 +477,34 @@ class ScatterPlot(BaseComponent):
         """Toggle aggregation sub-controls based on toggles."""
         smooth_methods = {"lowess", "running average"}
         binned_methods = {"mean", "mean +/- sem"}
-        group_on = self.aggr_group_toggle.value
-        all_on = self.aggr_all_toggle.value
-        either_on = group_on or all_on
+
+        # Group controls — only show when a Group By column is selected
+        has_group = self.group_select.value not in ("---", None, "")
+        self.aggr_group_toggle.visible = has_group
+        group_on = has_group and self.aggr_group_toggle.value
         group_method = self.aggr_group_method.value
-        all_method = self.aggr_all_method.value
         self.aggr_group_method.visible = group_on
-        self.aggr_all_method.visible = all_on
-        # Show smooth factor only for lowess / running average
-        needs_smooth = (
-            (group_on and group_method in smooth_methods)
-            or (all_on and all_method in smooth_methods)
-        )
-        self.aggr_smooth_factor.visible = needs_smooth
-        # Show quantiles toggle and n_quantiles/bins for binned methods
-        needs_bins = (
-            (group_on and group_method in binned_methods)
-            or (all_on and all_method in binned_methods)
-        )
-        self.aggr_quantiles_toggle.visible = either_on and needs_bins
-        self.aggr_n_quantiles.visible = either_on and needs_bins
-        # Update label based on quantile toggle
-        if self.aggr_quantiles_toggle.value:
-            self.aggr_n_quantiles.name = "Number of quantiles"
+        self.aggr_group_smooth.visible = group_on and group_method in smooth_methods
+        group_needs_bins = group_on and group_method in binned_methods
+        self.aggr_group_quantiles.visible = group_needs_bins
+        self.aggr_group_n_quantiles.visible = group_needs_bins
+        if self.aggr_group_quantiles.value:
+            self.aggr_group_n_quantiles.name = "Number of quantiles (group)"
         else:
-            self.aggr_n_quantiles.name = "Number of bins"
+            self.aggr_group_n_quantiles.name = "Number of bins (group)"
+
+        # All controls
+        all_on = self.aggr_all_toggle.value
+        all_method = self.aggr_all_method.value
+        self.aggr_all_method.visible = all_on
+        self.aggr_all_smooth.visible = all_on and all_method in smooth_methods
+        all_needs_bins = all_on and all_method in binned_methods
+        self.aggr_all_quantiles.visible = all_needs_bins
+        self.aggr_all_n_quantiles.visible = all_needs_bins
+        if self.aggr_all_quantiles.value:
+            self.aggr_all_n_quantiles.name = "Number of quantiles (all)"
+        else:
+            self.aggr_all_n_quantiles.name = "Number of bins (all)"
 
     def _toggle_marginal_controls(self, _event) -> None:
         """Toggle marginal sub-controls based on marginal toggle."""
@@ -443,12 +513,12 @@ class ScatterPlot(BaseComponent):
         self.marginal_kde.visible = show
         self.marginal_bins_slider.visible = show
         self.marginal_normalize.visible = show
+        self.marginal_height_slider.visible = show
 
     def _toggle_heatmap_controls(self, _event) -> None:
         """Toggle heatmap sub-controls based on heatmap toggle."""
         show = self.heatmap_toggle.value
         self.heatmap_bins_slider.visible = show
-        self.heatmap_hide_dots.visible = show
         self.heatmap_alpha_slider.visible = show
         self.heatmap_smooth_slider.visible = show
 
@@ -461,9 +531,29 @@ class ScatterPlot(BaseComponent):
 
     def _toggle_color_controls(self, _event) -> None:
         """Toggle palette controls based on color-by selection."""
-        show_controls = self.color_select.value not in ("---", None, "")
+        # Show palette controls if either color_select or group overrides color
+        has_group = self.group_select.value not in ("---", None, "")
+        applies = self.group_applies_to.value
+        group_overrides_color = has_group and applies in ("Color", "Color and Shape")
+        has_color = self.color_select.value not in ("---", None, "")
+        show_controls = has_color or group_overrides_color
         self.palette_select.visible = show_controls
         self.reverse_colors_toggle.visible = show_controls
+
+    def _toggle_group_applies(self, _event) -> None:
+        """Toggle group-applies-to dropdown and disable overridden selectors."""
+        has_group = self.group_select.value not in ("---", None, "")
+        self.group_applies_to.visible = has_group
+
+        applies = self.group_applies_to.value
+        overrides_color = has_group and applies in ("Color", "Color and Shape")
+        overrides_shape = has_group and applies in ("Shape", "Color and Shape")
+
+        self.color_select.disabled = overrides_color
+        self.shape_select.disabled = overrides_shape
+
+        # Keep palette controls in sync
+        self._toggle_color_controls(None)
 
     def _update_column_options(self, df: pd.DataFrame) -> None:
         """Update dropdown options based on available columns.
@@ -720,11 +810,14 @@ class ScatterPlot(BaseComponent):
         color_mapper,
         aggr_group: bool,
         aggr_group_method: str,
+        aggr_group_quantiles: bool,
+        aggr_group_n_quantiles: int,
+        aggr_group_smooth: int,
         aggr_all: bool,
         aggr_all_method: str,
-        smooth_factor: int,
-        use_quantiles: bool,
-        n_quantiles: int,
+        aggr_all_quantiles: bool,
+        aggr_all_n_quantiles: int,
+        aggr_all_smooth: int,
     ) -> None:
         """Render aggregation curves on the scatter plot figure."""
         from bokeh.models import Band, ColumnDataSource as CDS
@@ -749,7 +842,8 @@ class ScatterPlot(BaseComponent):
                 color = color_map.get(group, "#333333")
 
                 result = self._compute_aggregation(
-                    x_g, y_g, aggr_group_method, smooth_factor, use_quantiles, n_quantiles
+                    x_g, y_g, aggr_group_method, aggr_group_smooth,
+                    aggr_group_quantiles, aggr_group_n_quantiles,
                 )
                 if not result:
                     continue
@@ -771,7 +865,8 @@ class ScatterPlot(BaseComponent):
             y_all = y_numeric.astype(float)
 
             result = self._compute_aggregation(
-                x_all, y_all, aggr_all_method, smooth_factor, use_quantiles, n_quantiles
+                x_all, y_all, aggr_all_method, aggr_all_smooth,
+                aggr_all_quantiles, aggr_all_n_quantiles,
             )
             if result:
                 p.line(
@@ -846,18 +941,24 @@ class ScatterPlot(BaseComponent):
         marginal_kde: bool = False,
         marginal_bins: int = 25,
         marginal_normalize: bool = False,
+        marginal_height: int = 120,
+        hide_dots: bool = False,
+        hide_color_bar: bool = False,
+        hide_legend: bool = False,
         show_heatmap: bool = False,
         heatmap_bins: int = 30,
-        heatmap_hide_dots: bool = False,
         heatmap_alpha: float = 0.6,
         heatmap_smooth: float = 0.0,
         aggr_group: bool = False,
         aggr_group_method: str = "lowess",
+        aggr_group_quantiles: bool = False,
+        aggr_group_n_quantiles: int = 20,
+        aggr_group_smooth: int = 5,
         aggr_all: bool = False,
         aggr_all_method: str = "mean +/- sem",
-        aggr_quantiles: bool = False,
-        aggr_n_quantiles: int = 20,
-        aggr_smooth_factor: int = 5,
+        aggr_all_quantiles: bool = False,
+        aggr_all_n_quantiles: int = 20,
+        aggr_all_smooth: int = 5,
     ):
         """Create the Bokeh scatter plot figure."""
         scatter_config = self.config.scatter_plot
@@ -1070,14 +1171,6 @@ class ScatterPlot(BaseComponent):
             }
             source_data[shape_column] = shape_values.values
             source_data["marker"] = shape_values.map(shape_map).values
-        elif group_column and group_column in df_valid.columns:
-            group_values = df_valid[group_column].fillna("N/A").astype(str)
-            unique_groups = list(pd.unique(group_values))
-            group_map = {
-                value: markers[index % len(markers)] for index, value in enumerate(unique_groups)
-            }
-            source_data[group_column] = group_values.values
-            source_data["marker"] = group_values.map(group_map).values
         else:
             source_data["marker"] = ["circle"] * len(df_valid)
         scatter_renderers = []
@@ -1162,8 +1255,8 @@ class ScatterPlot(BaseComponent):
                 )
                 scatter_renderers.append(legend_renderer)
 
-        # Hide dots when heatmap is on and user opted to hide them
-        if show_heatmap and heatmap_hide_dots:
+        # Hide dots when user opted to hide them
+        if hide_dots:
             for renderer in scatter_renderers:
                 renderer.visible = False
 
@@ -1216,18 +1309,20 @@ class ScatterPlot(BaseComponent):
             self._render_aggr_on_figure(
                 p, df_valid, x_col, y_col, group_column, color_mapper,
                 aggr_group, aggr_group_method,
+                aggr_group_quantiles, aggr_group_n_quantiles, aggr_group_smooth,
                 aggr_all, aggr_all_method,
-                aggr_smooth_factor, aggr_quantiles, aggr_n_quantiles,
+                aggr_all_quantiles, aggr_all_n_quantiles, aggr_all_smooth,
             )
 
         # Add color bar for continuous mappings
-        if color_column:
+        if color_column and not hide_color_bar:
             add_color_bar(p, color_mapper, color_column, font_size=font_size)
 
         if scatter_renderers and p.legend:
             legend = p.legend[0]
             legend.click_policy = "hide"
             legend.location = "center"
+            legend.visible = not hide_legend
             p.add_layout(legend, "right")
 
         # Style the plot
@@ -1246,8 +1341,8 @@ class ScatterPlot(BaseComponent):
             return pn.pane.Bokeh(p, sizing_mode="stretch_width")
 
         # --- Marginal histograms ---
-        marginal_height = 120
-        marginal_width = 120
+        marginal_height = int(marginal_height)
+        marginal_width = marginal_height
 
         x_numeric = pd.to_numeric(df_valid[x_col], errors="coerce")
         y_numeric = pd.to_numeric(df_valid[y_col], errors="coerce")
@@ -1430,6 +1525,7 @@ class ScatterPlot(BaseComponent):
         y_col: str,
         color_col: str,
         group_col: str,
+        group_applies_to: str,
         shape_col: str,
         size_col: str,
         palette: str,
@@ -1446,18 +1542,24 @@ class ScatterPlot(BaseComponent):
         marginal_kde: bool = False,
         marginal_bins: int = 25,
         marginal_normalize: bool = False,
+        marginal_height: int = 120,
+        hide_dots: bool = False,
+        hide_color_bar: bool = False,
+        hide_legend: bool = False,
         show_heatmap: bool = False,
         heatmap_bins: int = 30,
-        heatmap_hide_dots: bool = False,
         heatmap_alpha: float = 0.6,
         heatmap_smooth: float = 0.0,
         aggr_group: bool = False,
         aggr_group_method: str = "lowess",
+        aggr_group_quantiles: bool = False,
+        aggr_group_n_quantiles: int = 20,
+        aggr_group_smooth: int = 5,
         aggr_all: bool = False,
         aggr_all_method: str = "mean +/- sem",
-        aggr_quantiles: bool = False,
-        aggr_n_quantiles: int = 20,
-        aggr_smooth_factor: int = 5,
+        aggr_all_quantiles: bool = False,
+        aggr_all_n_quantiles: int = 20,
+        aggr_all_smooth: int = 5,
     ):
         """Render the scatter plot with current settings."""
         try:
@@ -1473,17 +1575,29 @@ class ScatterPlot(BaseComponent):
             shape_col = self.shape_select.value or shape_col
             size_col = self.size_select.value or size_col
 
+            # Apply group overrides for color/shape
+            has_group = group_col not in ("---", None, "")
+            if has_group:
+                applies = self.group_applies_to.value
+                if applies in ("Color", "Color and Shape"):
+                    color_col = group_col
+                if applies in ("Shape", "Color and Shape"):
+                    shape_col = group_col
+
             # Hide bins/quantiles controls when x is discrete
             binned_methods = {"mean", "mean +/- sem"}
-            needs_bins = (
-                (aggr_group and aggr_group_method in binned_methods)
-                or (aggr_all and aggr_all_method in binned_methods)
-            )
-            if needs_bins and df is not None and not df.empty and x_col in df.columns:
+            group_needs_bins = aggr_group and aggr_group_method in binned_methods
+            all_needs_bins = aggr_all and aggr_all_method in binned_methods
+            if (group_needs_bins or all_needs_bins) and df is not None and not df.empty and x_col in df.columns:
                 x_unique = df[x_col].dropna().nunique()
-                is_discrete = not aggr_quantiles and x_unique <= max(aggr_n_quantiles, 50)
-                self.aggr_quantiles_toggle.visible = needs_bins
-                self.aggr_n_quantiles.visible = needs_bins and not is_discrete
+                if group_needs_bins:
+                    is_discrete_g = not aggr_group_quantiles and x_unique <= max(aggr_group_n_quantiles, 50)
+                    self.aggr_group_quantiles.visible = True
+                    self.aggr_group_n_quantiles.visible = not is_discrete_g
+                if all_needs_bins:
+                    is_discrete_a = not aggr_all_quantiles and x_unique <= max(aggr_all_n_quantiles, 50)
+                    self.aggr_all_quantiles.visible = True
+                    self.aggr_all_n_quantiles.visible = not is_discrete_a
 
             plot_width = int(plot_width)
             if group_col not in (None, "", "---") or shape_col not in (None, "", "---"):
@@ -1511,18 +1625,24 @@ class ScatterPlot(BaseComponent):
                 marginal_kde,
                 marginal_bins,
                 marginal_normalize,
+                marginal_height,
+                hide_dots,
+                hide_color_bar,
+                hide_legend,
                 show_heatmap,
                 heatmap_bins,
-                heatmap_hide_dots,
                 heatmap_alpha,
                 heatmap_smooth,
                 aggr_group,
                 aggr_group_method,
+                aggr_group_quantiles,
+                aggr_group_n_quantiles,
+                aggr_group_smooth,
                 aggr_all,
                 aggr_all_method,
-                aggr_quantiles,
-                aggr_n_quantiles,
-                aggr_smooth_factor,
+                aggr_all_quantiles,
+                aggr_all_n_quantiles,
+                aggr_all_smooth,
             )
         except Exception as e:
             logger.error(f"Error rendering scatter plot: {e}")
@@ -1559,15 +1679,21 @@ class ScatterPlot(BaseComponent):
             self.shape_select,
             pn.layout.Divider(),
             self.group_select,
+            self.group_applies_to,
             pn.layout.Divider(),
-            # Aggregation
+            # Aggregation (group)
             self.aggr_group_toggle,
             self.aggr_group_method,
+            self.aggr_group_quantiles,
+            self.aggr_group_n_quantiles,
+            self.aggr_group_smooth,
+            pn.layout.Divider(),
+            # Aggregation (all)
             self.aggr_all_toggle,
             self.aggr_all_method,
-            self.aggr_quantiles_toggle,
-            self.aggr_n_quantiles,
-            self.aggr_smooth_factor,
+            self.aggr_all_quantiles,
+            self.aggr_all_n_quantiles,
+            self.aggr_all_smooth,
             pn.layout.Divider(),
             # Marginal distributions
             self.marginal_toggle,
@@ -1581,13 +1707,16 @@ class ScatterPlot(BaseComponent):
             self.heatmap_bins_slider,
             self.heatmap_smooth_slider,
             self.heatmap_alpha_slider,
-            self.heatmap_hide_dots,
             pn.layout.Divider(),
             # Plot settings
             pn.Card(
+                self.hide_dots,
+                self.hide_color_bar,
+                self.hide_legend,
                 self.alpha_slider,
                 self.width_slider,
                 self.height_slider,
+                self.marginal_height_slider,
                 self.font_size_slider,
                 title="More settings",
                 collapsed=True,
@@ -1606,6 +1735,7 @@ class ScatterPlot(BaseComponent):
             y_col=self.y_select,
             color_col=self.color_select,
             group_col=self.group_select,
+            group_applies_to=self.group_applies_to,
             shape_col=self.shape_select,
             size_col=self.size_select,
             palette=self.palette_select,
@@ -1622,18 +1752,24 @@ class ScatterPlot(BaseComponent):
             marginal_kde=self.marginal_kde,
             marginal_bins=self.marginal_bins_slider,
             marginal_normalize=self.marginal_normalize,
+            marginal_height=self.marginal_height_slider,
+            hide_dots=self.hide_dots,
+            hide_color_bar=self.hide_color_bar,
+            hide_legend=self.hide_legend,
             show_heatmap=self.heatmap_toggle,
             heatmap_bins=self.heatmap_bins_slider,
-            heatmap_hide_dots=self.heatmap_hide_dots,
             heatmap_alpha=self.heatmap_alpha_slider,
             heatmap_smooth=self.heatmap_smooth_slider,
             aggr_group=self.aggr_group_toggle,
             aggr_group_method=self.aggr_group_method,
             aggr_all=self.aggr_all_toggle,
             aggr_all_method=self.aggr_all_method,
-            aggr_quantiles=self.aggr_quantiles_toggle,
-            aggr_n_quantiles=self.aggr_n_quantiles,
-            aggr_smooth_factor=self.aggr_smooth_factor,
+            aggr_group_quantiles=self.aggr_group_quantiles,
+            aggr_group_n_quantiles=self.aggr_group_n_quantiles,
+            aggr_group_smooth=self.aggr_group_smooth,
+            aggr_all_quantiles=self.aggr_all_quantiles,
+            aggr_all_n_quantiles=self.aggr_all_n_quantiles,
+            aggr_all_smooth=self.aggr_all_smooth,
         )
 
         # Side-by-side layout: controls on left, plot on right
