@@ -21,6 +21,7 @@ from components import (
     DocDBQueryPanel,
     FilterPanel,
     LogConsole,
+    PairPlot,
     ScatterPlot,
     StatsPanel,
     get_s3_image_url,
@@ -83,6 +84,13 @@ class AINDAnalysisFrameworkApp(BaseApp):
             value=self._PROJECT_PLACEHOLDER,
             sizing_mode="stretch_width",
         )
+
+        self.clear_selection_button = pn.widgets.Button(
+            name="Clear Selection",
+            button_type="default",
+            sizing_mode="stretch_width",
+        )
+        self.clear_selection_button.on_click(self._clear_selection)
 
         self.asset_columns_select = pn.widgets.IntSlider(
             name="Asset Columns",
@@ -155,6 +163,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
         )
         self._components["stats_panel"] = StatsPanel(self.data_holder, self.current_config)
         self._components["scatter_plot"] = ScatterPlot(self.data_holder, self.current_config)
+        self._components["pair_plot"] = PairPlot(self.data_holder, self.current_config)
 
     def _update_highlight_options(self, event) -> None:
         """Update highlight options when filtered_df changes.
@@ -360,6 +369,11 @@ class AINDAnalysisFrameworkApp(BaseApp):
             logger.error(f"Query string was: '{query_string}'")
             return f"Query error: {e}"
 
+    def _clear_selection(self, _event=None):
+        """Clear all selections globally."""
+        self.data_holder.selected_record_ids = []
+        self._clear_table_selection()
+
     def _clear_table_selection(self):
         """Clear the table widget's selection to update URL."""
         data_table = self._components.get("data_table")
@@ -423,6 +437,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
             table = self._components["data_table"].create()
             column_selector = self._components["column_selector"].create()
             scatter_plot = self._components["scatter_plot"].create()
+            pair_plot = self._components["pair_plot"].create()
 
             asset_display = self.asset_viewer.create_viewer(
                 record_ids_param=self.data_holder.param.selected_record_ids,
@@ -458,6 +473,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
                     ),
                 ),
                 ("Scatter Plot", scatter_plot),
+                ("Pair Plot", pair_plot),
                 sizing_mode="stretch_width",
             )
             pn.state.location.sync(tabs, {"active": "tab"})
@@ -493,6 +509,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
             self._components["filter_panel"].create(),
             pn.layout.Divider(),
             self._components["stats_panel"].create(),
+            self.clear_selection_button,
             pn.layout.Divider(),
             credits,
             pn.layout.Divider(),
