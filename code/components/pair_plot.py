@@ -432,9 +432,7 @@ class PairPlot(BaseComponent):
         self.group_select.options = ["---"] + group_cols
         self.size_select.options = ["---"] + numeric_cols
 
-        # Set default column selection
-        if cols_was_empty and not self.columns_select.value:
-            self.columns_select.value = numeric_cols[:3] if len(numeric_cols) >= 3 else numeric_cols[:2]
+        # No default column selection — user picks columns to avoid rendering on load
 
         # Validate current values
         if self.columns_select.value:
