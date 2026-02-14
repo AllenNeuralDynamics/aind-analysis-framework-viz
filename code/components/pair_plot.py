@@ -311,6 +311,12 @@ class PairPlot(BaseComponent):
             value=False,
             width=180,
         )
+        self.clear_selection_button = pn.widgets.Button(
+            name="Clear Selection",
+            button_type="warning",
+            width=180,
+        )
+        self.clear_selection_button.on_click(self._clear_selection)
 
     def _toggle_size_controls(self, _event) -> None:
         is_uniform = self.size_select.value in ("---", None, "")
@@ -349,6 +355,16 @@ class PairPlot(BaseComponent):
             self.aggr_n_quantiles.name = "Number of quantiles"
         else:
             self.aggr_n_quantiles.name = "Number of bins"
+
+    def _clear_selection(self, _event) -> None:
+        """Clear all selections across pair plot and DataHolder."""
+        self._syncing_selection = True
+        try:
+            for source in self._sources:
+                source.selected.indices = []
+        finally:
+            self._syncing_selection = False
+        self.data_holder.selected_record_ids = []
 
     def _update_column_options(self, df: pd.DataFrame) -> None:
         """Update dropdown options based on available columns."""
@@ -578,11 +594,12 @@ class PairPlot(BaseComponent):
     ):
         """Create a histogram for a diagonal cell."""
         p = figure(
-            width=cell_size,
-            height=cell_size,
+            frame_width=cell_size,
+            frame_height=cell_size,
             x_range=x_range,
-            tools="",
+            tools="wheel_zoom",
             toolbar_location=None,
+            active_scroll="wheel_zoom",
             title=col,
         )
 
@@ -660,8 +677,8 @@ class PairPlot(BaseComponent):
     ):
         """Create a scatter plot for an off-diagonal cell."""
         p = figure(
-            width=cell_size,
-            height=cell_size,
+            frame_width=cell_size,
+            frame_height=cell_size,
             x_range=x_range,
             y_range=y_range,
             tools="pan,wheel_zoom,box_select,lasso_select,reset,tap",
@@ -918,6 +935,7 @@ class PairPlot(BaseComponent):
     def create(self) -> pn.viewable.Viewable:
         """Create the pair plot component with controls."""
         controls = pn.Column(
+            self.clear_selection_button,
             self.columns_select,
             pn.layout.Divider(),
             self.color_select,
