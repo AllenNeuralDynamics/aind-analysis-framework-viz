@@ -139,6 +139,7 @@ class ScatterPlot(BaseComponent):
         location.sync(self.heatmap_toggle, {"value": "sp_hm"})
         location.sync(self.heatmap_bins_slider, {"value": "sp_hmb"})
         location.sync(self.hide_dots, {"value": "sp_hdots"})
+        location.sync(self.aggr_line_width_slider, {"value": "sp_alw"})
         location.sync(self.hide_color_bar, {"value": "sp_hcb"})
         location.sync(self.marginal_height_slider, {"value": "sp_mh"})
         location.sync(self.hide_legend, {"value": "sp_hleg"})
@@ -424,10 +425,18 @@ class ScatterPlot(BaseComponent):
             value=scatter_config.default_alpha,
             width=180,
         )
+        self.aggr_line_width_slider = pn.widgets.FloatSlider(
+            name="Aggr line width",
+            start=0.5,
+            end=10.0,
+            step=0.5,
+            value=3.0,
+            width=180,
+        )
 
         # Plot settings
         self.width_slider = pn.widgets.IntSlider(
-            name="Width",
+            name="Figure width",
             start=300,
             end=1600,
             step=50,
@@ -435,7 +444,7 @@ class ScatterPlot(BaseComponent):
             width=180,
         )
         self.height_slider = pn.widgets.IntSlider(
-            name="Height",
+            name="Figure height",
             start=250,
             end=1200,
             step=50,
@@ -818,6 +827,7 @@ class ScatterPlot(BaseComponent):
         aggr_all_quantiles: bool,
         aggr_all_n_quantiles: int,
         aggr_all_smooth: int,
+        aggr_line_width: float = 3.0,
     ) -> None:
         """Render aggregation curves on the scatter plot figure."""
         from bokeh.models import Band, ColumnDataSource as CDS
@@ -848,7 +858,7 @@ class ScatterPlot(BaseComponent):
                 if not result:
                     continue
 
-                p.line(result["x"], result["y"], line_color=color, line_width=3, line_alpha=0.9)
+                p.line(result["x"], result["y"], line_color=color, line_width=aggr_line_width, line_alpha=0.9)
                 if "y_upper" in result and "y_lower" in result:
                     band_source = CDS(
                         data={"x": result["x"], "upper": result["y_upper"], "lower": result["y_lower"]}
@@ -871,7 +881,7 @@ class ScatterPlot(BaseComponent):
             if result:
                 p.line(
                     result["x"], result["y"],
-                    line_color="black", line_width=3, line_dash="dashed", line_alpha=0.9,
+                    line_color="black", line_width=aggr_line_width * 1.5, line_alpha=0.9,
                 )
                 if "y_upper" in result and "y_lower" in result:
                     band_source = CDS(
@@ -959,6 +969,7 @@ class ScatterPlot(BaseComponent):
         aggr_all_quantiles: bool = False,
         aggr_all_n_quantiles: int = 20,
         aggr_all_smooth: int = 5,
+        aggr_line_width: float = 3.0,
     ):
         """Create the Bokeh scatter plot figure."""
         scatter_config = self.config.scatter_plot
@@ -1312,6 +1323,7 @@ class ScatterPlot(BaseComponent):
                 aggr_group_quantiles, aggr_group_n_quantiles, aggr_group_smooth,
                 aggr_all, aggr_all_method,
                 aggr_all_quantiles, aggr_all_n_quantiles, aggr_all_smooth,
+                aggr_line_width,
             )
 
         # Add color bar for continuous mappings
@@ -1560,6 +1572,7 @@ class ScatterPlot(BaseComponent):
         aggr_all_quantiles: bool = False,
         aggr_all_n_quantiles: int = 20,
         aggr_all_smooth: int = 5,
+        aggr_line_width: float = 3.0,
     ):
         """Render the scatter plot with current settings."""
         try:
@@ -1643,6 +1656,7 @@ class ScatterPlot(BaseComponent):
                 aggr_all_quantiles,
                 aggr_all_n_quantiles,
                 aggr_all_smooth,
+                aggr_line_width,
             )
         except Exception as e:
             logger.error(f"Error rendering scatter plot: {e}")
@@ -1714,6 +1728,7 @@ class ScatterPlot(BaseComponent):
                 self.hide_color_bar,
                 self.hide_legend,
                 self.alpha_slider,
+                self.aggr_line_width_slider,
                 self.width_slider,
                 self.height_slider,
                 self.marginal_height_slider,
@@ -1770,6 +1785,7 @@ class ScatterPlot(BaseComponent):
             aggr_all_quantiles=self.aggr_all_quantiles,
             aggr_all_n_quantiles=self.aggr_all_n_quantiles,
             aggr_all_smooth=self.aggr_all_smooth,
+            aggr_line_width=self.aggr_line_width_slider,
         )
 
         # Side-by-side layout: controls on left, plot on right
