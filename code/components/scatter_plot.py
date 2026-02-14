@@ -423,14 +423,18 @@ class ScatterPlot(BaseComponent):
             or (all_on and all_method in smooth_methods)
         )
         self.aggr_smooth_factor.visible = needs_smooth
-        # Show quantiles toggle and n_quantiles for binned methods,
-        # or when quantiles toggle is on for any method
+        # Show quantiles toggle and n_quantiles/bins for binned methods
         needs_bins = (
             (group_on and group_method in binned_methods)
             or (all_on and all_method in binned_methods)
         )
         self.aggr_quantiles_toggle.visible = either_on and needs_bins
         self.aggr_n_quantiles.visible = either_on and needs_bins
+        # Update label based on quantile toggle
+        if self.aggr_quantiles_toggle.value:
+            self.aggr_n_quantiles.name = "Number of quantiles"
+        else:
+            self.aggr_n_quantiles.name = "Number of bins"
 
     def _toggle_marginal_controls(self, _event) -> None:
         """Toggle marginal sub-controls based on marginal toggle."""
