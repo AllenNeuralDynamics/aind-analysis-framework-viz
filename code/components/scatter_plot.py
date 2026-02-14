@@ -615,9 +615,9 @@ class ScatterPlot(BaseComponent):
                 return {}
 
         if method in ("mean", "mean +/- sem"):
-            # Detect discrete x: if unique values <= n_quantiles, group by exact value
+            # Detect discrete x: use exact grouping unless user explicitly requests quantile binning
             unique_x = np.unique(x_sorted)
-            is_discrete = len(unique_x) <= n_quantiles
+            is_discrete = not use_quantiles and len(unique_x) <= max(n_quantiles, 50)
 
             if is_discrete:
                 # Group by exact x values
