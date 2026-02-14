@@ -354,6 +354,8 @@ class ScatterPlot(BaseComponent):
         self.aggr_group_toggle.param.watch(self._toggle_aggr_controls, "value")
         self.aggr_all_toggle.param.watch(self._toggle_aggr_controls, "value")
         self.aggr_quantiles_toggle.param.watch(self._toggle_aggr_controls, "value")
+        self.aggr_group_method.param.watch(self._toggle_aggr_controls, "value")
+        self.aggr_all_method.param.watch(self._toggle_aggr_controls, "value")
         self._toggle_aggr_controls(None)
 
         # Alpha slider
@@ -406,6 +408,7 @@ class ScatterPlot(BaseComponent):
 
     def _toggle_aggr_controls(self, _event) -> None:
         """Toggle aggregation sub-controls based on toggles."""
+        no_smooth_methods = {"---", "linear fit"}
         group_on = self.aggr_group_toggle.value
         all_on = self.aggr_all_toggle.value
         either_on = group_on or all_on
@@ -413,7 +416,12 @@ class ScatterPlot(BaseComponent):
         self.aggr_all_method.visible = all_on
         self.aggr_quantiles_toggle.visible = either_on
         self.aggr_n_quantiles.visible = either_on and self.aggr_quantiles_toggle.value
-        self.aggr_smooth_factor.visible = either_on
+        # Show smooth factor only when an active method uses it
+        needs_smooth = (
+            (group_on and self.aggr_group_method.value not in no_smooth_methods)
+            or (all_on and self.aggr_all_method.value not in no_smooth_methods)
+        )
+        self.aggr_smooth_factor.visible = needs_smooth
 
     def _toggle_marginal_controls(self, _event) -> None:
         """Toggle marginal sub-controls based on marginal toggle."""
