@@ -118,6 +118,8 @@ class PairPlot(BaseComponent):
         location.sync(self.aggr_line_width_slider, {"value": "pp_alw"})
         location.sync(self.hist_bins_slider, {"value": "pp_hbin"})
         location.sync(self.hist_kde_toggle, {"value": "pp_kde"})
+        location.sync(self.hist_stacked, {"value": "pp_hstack"})
+        location.sync(self.hist_normalize, {"value": "pp_hnorm"})
         location.sync(self.width_slider, {"value": "pp_w"})
         location.sync(self.font_size_slider, {"value": "pp_fs"})
         location.sync(self.hide_dots, {"value": "pp_hdots"})
@@ -133,7 +135,7 @@ class PairPlot(BaseComponent):
             options=[],
             value=[],
             size=8,
-            width=180,
+            width=240,
         )
 
         self.color_select = pn.widgets.Select(
@@ -271,6 +273,16 @@ class PairPlot(BaseComponent):
             end=100,
             step=1,
             value=25,
+            width=180,
+        )
+        self.hist_stacked = pn.widgets.Checkbox(
+            name="Stack histograms",
+            value=True,
+            width=180,
+        )
+        self.hist_normalize = pn.widgets.Checkbox(
+            name="Normalize",
+            value=False,
             width=180,
         )
         self.hist_kde_toggle = pn.widgets.Checkbox(
@@ -431,6 +443,8 @@ class PairPlot(BaseComponent):
         hide_dots: bool,
         hide_color_bar: bool,
         hide_legend: bool,
+        hist_stacked: bool = True,
+        hist_normalize: bool = False,
     ):
         """Create the N×N pair plot grid."""
         scatter_config = self.config.scatter_plot
@@ -527,7 +541,7 @@ class PairPlot(BaseComponent):
                     # Diagonal: histogram
                     p = self._create_histogram_cell(
                         df_valid, x_col, cat_values, groups,
-                        ranges[x_col], cell_size, hist_bins, hist_kde,
+                        ranges[x_col], cell_size, hist_bins, hist_kde, hist_stacked, hist_normalize,
                         show_x_label, show_y_label, font_size, tick_size,
                     )
                 else:
@@ -573,7 +587,7 @@ class PairPlot(BaseComponent):
 
     def _create_histogram_cell(
         self, df_valid, col, cat_values, groups,
-        x_range, cell_size, n_bins, show_kde,
+        x_range, cell_size, n_bins, show_kde, hist_stacked, hist_normalize,
         show_x_label, show_y_label, font_size, tick_size,
     ):
         """Create a histogram for a diagonal cell."""
@@ -594,7 +608,7 @@ class PairPlot(BaseComponent):
 
         all_vals = vals[valid_mask].values
         edges = np.histogram_bin_edges(all_vals, bins=n_bins)
-        hist_alpha = 0.6
+        hist_alpha = 0.6 if hist_stacked else 0.4
         bottom = np.zeros(len(edges) - 1)
 
         for cat, color in groups:
@@ -603,16 +617,30 @@ class PairPlot(BaseComponent):
                 continue
             hist, _ = np.histogram(vals[mask].values, bins=edges)
             hist = hist.astype(float)
-            p.quad(
-                top=bottom + hist,
-                bottom=bottom,
-                left=edges[:-1],
-                right=edges[1:],
-                fill_color=color,
-                line_color="white",
-                fill_alpha=hist_alpha,
-            )
-            bottom = bottom + hist
+            if hist_normalize and hist.sum() > 0:
+                bin_width = edges[1] - edges[0]
+                hist = hist / (hist.sum() * bin_width)
+            if hist_stacked:
+                p.quad(
+                    top=bottom + hist,
+                    bottom=bottom,
+                    left=edges[:-1],
+                    right=edges[1:],
+                    fill_color=color,
+                    line_color="white",
+                    fill_alpha=hist_alpha,
+                )
+                bottom = bottom + hist
+            else:
+                p.quad(
+                    top=hist,
+                    bottom=0,
+                    left=edges[:-1],
+                    right=edges[1:],
+                    fill_color=color,
+                    line_color=color,
+                    fill_alpha=hist_alpha,
+                )
 
         if show_kde:
             for cat, color in groups:
@@ -625,20 +653,23 @@ class PairPlot(BaseComponent):
                     kde = gaussian_kde(cat_vals)
                     x_grid = np.linspace(all_vals.min(), all_vals.max(), 200)
                     density = kde(x_grid)
-                    bin_width = edges[1] - edges[0]
-                    density = density * len(cat_vals) * bin_width
+                    if not hist_normalize:
+                        bin_width = edges[1] - edges[0]
+                        density = density * len(cat_vals) * bin_width
                     p.line(x_grid, density, line_color=color, line_width=2)
                 except Exception:
                     pass
 
         # Style
         p.title.text_font_size = f"{font_size}pt"
+        p.title.text_font_style = "bold"
         if not show_x_label:
             p.xaxis.axis_label = ""
             p.xaxis.major_label_text_font_size = "0pt"
         else:
             p.xaxis.axis_label = col
             p.xaxis.axis_label_text_font_size = f"{font_size}pt"
+            p.xaxis.axis_label_text_font_style = "bold"
             p.xaxis.major_label_text_font_size = f"{tick_size}pt"
         if not show_y_label:
             p.yaxis.axis_label = ""
@@ -646,6 +677,7 @@ class PairPlot(BaseComponent):
         else:
             p.yaxis.axis_label = "Count"
             p.yaxis.axis_label_text_font_size = f"{font_size}pt"
+            p.yaxis.axis_label_text_font_style = "bold"
             p.yaxis.major_label_text_font_size = f"{tick_size}pt"
 
         p.min_border = 5
@@ -707,7 +739,7 @@ class PairPlot(BaseComponent):
                     size="size", alpha=alpha, color=color_spec, marker="circle",
                     line_color="#333333", line_width=0.5,
                     selection_line_color="black", selection_line_width=2,
-                    nonselection_alpha=0.1,
+                    selection_alpha=1.0, nonselection_alpha=0.1,
                 )
                 scatter_renderers.append(renderer)
                 self._sources.append(group_source)
@@ -721,7 +753,7 @@ class PairPlot(BaseComponent):
                 size="size", alpha=alpha, color=color_spec, marker="circle",
                 line_color="#333333", line_width=0.5,
                 selection_line_color="black", selection_line_width=2,
-                nonselection_alpha=0.1,
+                selection_alpha=1.0, nonselection_alpha=0.1,
             )
             scatter_renderers.append(renderer)
             self._sources.append(source)
@@ -773,6 +805,7 @@ class PairPlot(BaseComponent):
         else:
             p.xaxis.axis_label = x_col
             p.xaxis.axis_label_text_font_size = f"{font_size}pt"
+            p.xaxis.axis_label_text_font_style = "bold"
             p.xaxis.major_label_text_font_size = f"{tick_size}pt"
 
         if not show_y_label:
@@ -781,6 +814,7 @@ class PairPlot(BaseComponent):
         else:
             p.yaxis.axis_label = y_col
             p.yaxis.axis_label_text_font_size = f"{font_size}pt"
+            p.yaxis.axis_label_text_font_style = "bold"
             p.yaxis.major_label_text_font_size = f"{tick_size}pt"
 
         # Hide legend on individual cells (too cluttered)
@@ -875,6 +909,8 @@ class PairPlot(BaseComponent):
         aggr_line_width: float,
         hist_bins: int,
         hist_kde: bool,
+        hist_stacked: bool,
+        hist_normalize: bool,
         hide_dots: bool,
         hide_color_bar: bool,
         hide_legend: bool,
@@ -910,6 +946,7 @@ class PairPlot(BaseComponent):
                 aggr_on, aggr_method, aggr_quantiles, aggr_n_quantiles,
                 aggr_smooth, aggr_line_width,
                 int(hist_bins), hist_kde, hide_dots, hide_color_bar, hide_legend,
+                hist_stacked, hist_normalize,
             )
         except Exception as e:
             logger.error(f"Error rendering pair plot: {e}")
@@ -943,6 +980,8 @@ class PairPlot(BaseComponent):
             self.aggr_line_width_slider,
             pn.layout.Divider(),
             self.hist_bins_slider,
+            self.hist_stacked,
+            self.hist_normalize,
             self.hist_kde_toggle,
             pn.layout.Divider(),
             pn.Card(
@@ -956,7 +995,7 @@ class PairPlot(BaseComponent):
                 collapsed=True,
                 sizing_mode="stretch_width",
             ),
-            width=200,
+            width=250,
         )
 
         self._sync_url_state()
@@ -984,6 +1023,8 @@ class PairPlot(BaseComponent):
             aggr_smooth=self.aggr_smooth,
             aggr_line_width=self.aggr_line_width_slider,
             hist_bins=self.hist_bins_slider,
+            hist_stacked=self.hist_stacked,
+            hist_normalize=self.hist_normalize,
             hist_kde=self.hist_kde_toggle,
             hide_dots=self.hide_dots,
             hide_color_bar=self.hide_color_bar,

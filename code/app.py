@@ -87,7 +87,7 @@ class AINDAnalysisFrameworkApp(BaseApp):
 
         self.clear_selection_button = pn.widgets.Button(
             name="Clear Selection",
-            button_type="warning",
+            button_type="default",
             sizing_mode="stretch_width",
         )
         self.clear_selection_button.on_click(self._clear_selection)
