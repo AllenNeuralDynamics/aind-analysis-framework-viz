@@ -408,20 +408,29 @@ class ScatterPlot(BaseComponent):
 
     def _toggle_aggr_controls(self, _event) -> None:
         """Toggle aggregation sub-controls based on toggles."""
-        no_smooth_methods = {"---", "linear fit"}
+        smooth_methods = {"lowess", "running average"}
+        binned_methods = {"mean", "mean +/- sem"}
         group_on = self.aggr_group_toggle.value
         all_on = self.aggr_all_toggle.value
         either_on = group_on or all_on
+        group_method = self.aggr_group_method.value
+        all_method = self.aggr_all_method.value
         self.aggr_group_method.visible = group_on
         self.aggr_all_method.visible = all_on
-        self.aggr_quantiles_toggle.visible = either_on
-        self.aggr_n_quantiles.visible = either_on and self.aggr_quantiles_toggle.value
-        # Show smooth factor only when an active method uses it
+        # Show smooth factor only for lowess / running average
         needs_smooth = (
-            (group_on and self.aggr_group_method.value not in no_smooth_methods)
-            or (all_on and self.aggr_all_method.value not in no_smooth_methods)
+            (group_on and group_method in smooth_methods)
+            or (all_on and all_method in smooth_methods)
         )
         self.aggr_smooth_factor.visible = needs_smooth
+        # Show quantiles toggle and n_quantiles for binned methods,
+        # or when quantiles toggle is on for any method
+        needs_bins = (
+            (group_on and group_method in binned_methods)
+            or (all_on and all_method in binned_methods)
+        )
+        self.aggr_quantiles_toggle.visible = either_on and needs_bins
+        self.aggr_n_quantiles.visible = either_on and needs_bins
 
     def _toggle_marginal_controls(self, _event) -> None:
         """Toggle marginal sub-controls based on marginal toggle."""
@@ -601,52 +610,44 @@ class ScatterPlot(BaseComponent):
             if len(x_sorted) < 2:
                 return {}
 
-        if method == "mean":
+        if method in ("mean", "mean +/- sem"):
+            # Use quantiles (equal-count bins) or equal-width bins
             if use_quantiles:
-                return {"x": x_sorted, "y": y_sorted}
-            # Bin into groups
-            n_bins = max(2, len(x_sorted) // max(1, smooth_factor))
+                # Already binned above into quantiles
+                if method == "mean":
+                    return {"x": x_sorted, "y": y_sorted}
+                else:
+                    return {
+                        "x": x_sorted,
+                        "y": y_sorted,
+                        "y_upper": y_sorted + y_sem_arr,
+                        "y_lower": y_sorted - y_sem_arr,
+                    }
+            # Equal-width bins using n_quantiles as the bin count
+            n_bins = max(2, n_quantiles)
             bin_edges = np.linspace(x_sorted.min(), x_sorted.max(), n_bins + 1)
             bin_idx = np.digitize(x_sorted, bin_edges[1:-1])
-            x_means, y_means = [], []
+            x_means, y_means, y_sems = [], [], []
             for i in range(n_bins):
                 mask = bin_idx == i
                 if mask.sum() > 0:
                     x_means.append(np.mean(x_sorted[mask]))
                     y_means.append(np.mean(y_sorted[mask]))
-            return {"x": np.array(x_means), "y": np.array(y_means)}
-
-        elif method == "mean +/- sem":
-            if use_quantiles:
-                return {
-                    "x": x_sorted,
-                    "y": y_sorted,
-                    "y_upper": y_sorted + y_sem_arr,
-                    "y_lower": y_sorted - y_sem_arr,
-                }
-            n_bins = max(2, len(x_sorted) // max(1, smooth_factor))
-            bin_edges = np.linspace(x_sorted.min(), x_sorted.max(), n_bins + 1)
-            bin_idx = np.digitize(x_sorted, bin_edges[1:-1])
-            x_means, y_means, y_upper, y_lower = [], [], [], []
-            for i in range(n_bins):
-                mask = bin_idx == i
-                if mask.sum() > 0:
-                    xm = np.mean(x_sorted[mask])
-                    ym = np.mean(y_sorted[mask])
-                    sem = (
+                    y_sems.append(
                         np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
                         if mask.sum() > 1
                         else 0
                     )
-                    x_means.append(xm)
-                    y_means.append(ym)
-                    y_upper.append(ym + sem)
-                    y_lower.append(ym - sem)
+            x_arr = np.array(x_means)
+            y_arr = np.array(y_means)
+            if method == "mean":
+                return {"x": x_arr, "y": y_arr}
+            sem_arr = np.array(y_sems)
             return {
-                "x": np.array(x_means),
-                "y": np.array(y_means),
-                "y_upper": np.array(y_upper),
-                "y_lower": np.array(y_lower),
+                "x": x_arr,
+                "y": y_arr,
+                "y_upper": y_arr + sem_arr,
+                "y_lower": y_arr - sem_arr,
             }
 
         elif method == "lowess":
