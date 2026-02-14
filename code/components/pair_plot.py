@@ -125,6 +125,10 @@ class PairPlot(BaseComponent):
         location.sync(self.hide_dots, {"value": "pp_hdots"})
         location.sync(self.hide_color_bar, {"value": "pp_hcb"})
         location.sync(self.hide_legend, {"value": "pp_hleg"})
+        location.sync(self.heatmap_toggle, {"value": "pp_hm"})
+        location.sync(self.heatmap_bins_slider, {"value": "pp_hmb"})
+        location.sync(self.heatmap_alpha_slider, {"value": "pp_hma"})
+        location.sync(self.heatmap_smooth_slider, {"value": "pp_hms"})
 
     def _init_controls(self) -> None:
         """Initialize control widgets."""
@@ -324,6 +328,39 @@ class PairPlot(BaseComponent):
             width=180,
         )
 
+        # 2D heatmap controls
+        self.heatmap_toggle = pn.widgets.Checkbox(
+            name="2D heatmap",
+            value=False,
+            width=180,
+        )
+        self.heatmap_bins_slider = pn.widgets.IntSlider(
+            name="Heatmap bins",
+            start=10,
+            end=100,
+            step=5,
+            value=30,
+            width=180,
+        )
+        self.heatmap_alpha_slider = pn.widgets.FloatSlider(
+            name="Heatmap opacity",
+            start=0.1,
+            end=1.0,
+            step=0.1,
+            value=0.6,
+            width=180,
+        )
+        self.heatmap_smooth_slider = pn.widgets.FloatSlider(
+            name="Smoothing (sigma)",
+            start=0.0,
+            end=5.0,
+            step=0.5,
+            value=0.0,
+            width=180,
+        )
+        self.heatmap_toggle.param.watch(self._toggle_heatmap_controls, "value")
+        self._toggle_heatmap_controls(None)
+
     def _toggle_size_controls(self, _event) -> None:
         is_uniform = self.size_select.value in ("---", None, "")
         self.size_uniform_slider.visible = is_uniform
@@ -345,6 +382,12 @@ class PairPlot(BaseComponent):
         overrides_color = has_group and self.group_applies_to.value == "Color"
         self.color_select.disabled = overrides_color
         self._toggle_color_controls(None)
+
+    def _toggle_heatmap_controls(self, _event) -> None:
+        show = self.heatmap_toggle.value
+        self.heatmap_bins_slider.visible = show
+        self.heatmap_alpha_slider.visible = show
+        self.heatmap_smooth_slider.visible = show
 
     def _toggle_aggr_controls(self, _event) -> None:
         smooth_methods = {"lowess", "running average"}
@@ -445,6 +488,10 @@ class PairPlot(BaseComponent):
         hide_legend: bool,
         hist_stacked: bool = True,
         hist_normalize: bool = False,
+        heatmap_on: bool = False,
+        heatmap_bins: int = 30,
+        heatmap_alpha: float = 0.6,
+        heatmap_smooth: float = 0.0,
     ):
         """Create the N×N pair plot grid."""
         scatter_config = self.config.scatter_plot
@@ -553,6 +600,7 @@ class PairPlot(BaseComponent):
                         hide_dots, group_column, groups,
                         aggr_on, aggr_method, aggr_quantiles, aggr_n_quantiles,
                         aggr_smooth, aggr_line_width,
+                        heatmap_on, heatmap_bins, heatmap_alpha, heatmap_smooth,
                     )
 
                 row_figures.append(p)
@@ -690,6 +738,10 @@ class PairPlot(BaseComponent):
         hide_dots, group_column, groups,
         aggr_on, aggr_method, aggr_quantiles, aggr_n_quantiles,
         aggr_smooth, aggr_line_width,
+        heatmap_on: bool = False,
+        heatmap_bins: int = 30,
+        heatmap_alpha: float = 0.6,
+        heatmap_smooth: float = 0.0,
     ):
         """Create a scatter plot for an off-diagonal cell."""
         p = figure(
@@ -706,6 +758,39 @@ class PairPlot(BaseComponent):
         id_col = self.config.id_column
 
         scatter_config = self.config.scatter_plot
+
+        # 2D heatmap overlay (rendered first so scatter points appear on top)
+        if heatmap_on:
+            x_hm = pd.to_numeric(df_valid[x_col], errors="coerce").dropna()
+            y_hm = pd.to_numeric(df_valid[y_col], errors="coerce").dropna()
+            common_idx = x_hm.index.intersection(y_hm.index)
+            if len(common_idx) >= 2:
+                x_vals = x_hm.loc[common_idx].values
+                y_vals = y_hm.loc[common_idx].values
+                heatmap_data, xedges, yedges = np.histogram2d(
+                    x_vals, y_vals, bins=int(heatmap_bins)
+                )
+                heatmap_data = heatmap_data.T.astype(float)
+                if heatmap_smooth > 0:
+                    from scipy.ndimage import gaussian_filter
+                    heatmap_data = gaussian_filter(heatmap_data, sigma=heatmap_smooth)
+                heatmap_data[heatmap_data == 0] = np.nan
+                from bokeh.palettes import Turbo256
+                hm_mapper = LinearColorMapper(
+                    palette=Turbo256,
+                    low=np.nanmin(heatmap_data),
+                    high=np.nanmax(heatmap_data),
+                    nan_color=(0, 0, 0, 0),
+                )
+                p.image(
+                    image=[heatmap_data],
+                    x=xedges[0],
+                    y=yedges[0],
+                    dw=xedges[-1] - xedges[0],
+                    dh=yedges[-1] - yedges[0],
+                    color_mapper=hm_mapper,
+                    global_alpha=heatmap_alpha,
+                )
 
         # Build source data
         source_data = {
@@ -950,6 +1035,10 @@ class PairPlot(BaseComponent):
         hide_dots: bool,
         hide_color_bar: bool,
         hide_legend: bool,
+        heatmap_on: bool = False,
+        heatmap_bins: int = 30,
+        heatmap_alpha: float = 0.6,
+        heatmap_smooth: float = 0.0,
     ):
         """Render the pair plot with current settings."""
         try:
@@ -983,6 +1072,7 @@ class PairPlot(BaseComponent):
                 aggr_smooth, aggr_line_width,
                 int(hist_bins), hist_kde, hide_dots, hide_color_bar, hide_legend,
                 hist_stacked, hist_normalize,
+                heatmap_on, int(heatmap_bins), heatmap_alpha, heatmap_smooth,
             )
         except Exception as e:
             logger.error(f"Error rendering pair plot: {e}")
@@ -1019,6 +1109,11 @@ class PairPlot(BaseComponent):
             self.hist_stacked,
             self.hist_normalize,
             self.hist_kde_toggle,
+            pn.layout.Divider(),
+            self.heatmap_toggle,
+            self.heatmap_bins_slider,
+            self.heatmap_alpha_slider,
+            self.heatmap_smooth_slider,
             pn.layout.Divider(),
             pn.Card(
                 self.hide_dots,
@@ -1065,6 +1160,10 @@ class PairPlot(BaseComponent):
             hide_dots=self.hide_dots,
             hide_color_bar=self.hide_color_bar,
             hide_legend=self.hide_legend,
+            heatmap_on=self.heatmap_toggle,
+            heatmap_bins=self.heatmap_bins_slider,
+            heatmap_alpha=self.heatmap_alpha_slider,
+            heatmap_smooth=self.heatmap_smooth_slider,
         )
 
         return pn.Row(
