@@ -759,39 +759,6 @@ class PairPlot(BaseComponent):
 
         scatter_config = self.config.scatter_plot
 
-        # 2D heatmap overlay (rendered first so scatter points appear on top)
-        if heatmap_on:
-            x_hm = pd.to_numeric(df_valid[x_col], errors="coerce").dropna()
-            y_hm = pd.to_numeric(df_valid[y_col], errors="coerce").dropna()
-            common_idx = x_hm.index.intersection(y_hm.index)
-            if len(common_idx) >= 2:
-                x_vals = x_hm.loc[common_idx].values
-                y_vals = y_hm.loc[common_idx].values
-                heatmap_data, xedges, yedges = np.histogram2d(
-                    x_vals, y_vals, bins=int(heatmap_bins)
-                )
-                heatmap_data = heatmap_data.T.astype(float)
-                if heatmap_smooth > 0:
-                    from scipy.ndimage import gaussian_filter
-                    heatmap_data = gaussian_filter(heatmap_data, sigma=heatmap_smooth)
-                heatmap_data[heatmap_data == 0] = np.nan
-                from bokeh.palettes import Turbo256
-                hm_mapper = LinearColorMapper(
-                    palette=Turbo256,
-                    low=np.nanmin(heatmap_data),
-                    high=np.nanmax(heatmap_data),
-                    nan_color=(0, 0, 0, 0),
-                )
-                p.image(
-                    image=[heatmap_data],
-                    x=xedges[0],
-                    y=yedges[0],
-                    dw=xedges[-1] - xedges[0],
-                    dh=yedges[-1] - yedges[0],
-                    color_mapper=hm_mapper,
-                    global_alpha=heatmap_alpha,
-                )
-
         # Build source data
         source_data = {
             "x": df_valid[x_col].values,
@@ -918,6 +885,39 @@ class PairPlot(BaseComponent):
                 aggr_method, aggr_quantiles, aggr_n_quantiles, aggr_smooth,
                 aggr_line_width,
             )
+
+        # 2D heatmap overlay (rendered on top of scatter points)
+        if heatmap_on:
+            x_hm = pd.to_numeric(df_valid[x_col], errors="coerce").dropna()
+            y_hm = pd.to_numeric(df_valid[y_col], errors="coerce").dropna()
+            common_idx = x_hm.index.intersection(y_hm.index)
+            if len(common_idx) >= 2:
+                x_vals = x_hm.loc[common_idx].values
+                y_vals = y_hm.loc[common_idx].values
+                heatmap_data, xedges, yedges = np.histogram2d(
+                    x_vals, y_vals, bins=int(heatmap_bins)
+                )
+                heatmap_data = heatmap_data.T.astype(float)
+                if heatmap_smooth > 0:
+                    from scipy.ndimage import gaussian_filter
+                    heatmap_data = gaussian_filter(heatmap_data, sigma=heatmap_smooth)
+                heatmap_data[heatmap_data == 0] = np.nan
+                from bokeh.palettes import Turbo256
+                hm_mapper = LinearColorMapper(
+                    palette=Turbo256,
+                    low=np.nanmin(heatmap_data),
+                    high=np.nanmax(heatmap_data),
+                    nan_color=(0, 0, 0, 0),
+                )
+                p.image(
+                    image=[heatmap_data],
+                    x=xedges[0],
+                    y=yedges[0],
+                    dw=xedges[-1] - xedges[0],
+                    dh=yedges[-1] - yedges[0],
+                    color_mapper=hm_mapper,
+                    global_alpha=heatmap_alpha,
+                )
 
         # Style axes
         if not show_x_label:
