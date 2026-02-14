@@ -705,6 +705,8 @@ class PairPlot(BaseComponent):
 
         id_col = self.config.id_column
 
+        scatter_config = self.config.scatter_plot
+
         # Build source data
         source_data = {
             "x": df_valid[x_col].values,
@@ -721,6 +723,24 @@ class PairPlot(BaseComponent):
                 ).values
             else:
                 source_data[color_column] = df_valid[color_column].astype(str).values
+
+        # Add tooltip image URLs if configured
+        if scatter_config.tooltip_image_column and scatter_config.tooltip_image_column in df_valid.columns:
+            from .asset_viewer import get_s3_image_url
+            asset_config = self.config.asset
+            urls = []
+            for _, row in df_valid.iterrows():
+                s3_loc = row.get(scatter_config.tooltip_image_column, "")
+                if s3_loc:
+                    base = s3_loc if s3_loc.endswith("/") else f"{s3_loc}/"
+                    full_path = f"{base}{asset_config.asset_filename}"
+                    url = get_s3_image_url(full_path) or ""
+                else:
+                    url = ""
+                urls.append(url)
+            source_data["tooltip_image_url"] = urls
+        elif scatter_config.tooltip_image_column:
+            source_data["tooltip_image_url"] = [""] * len(df_valid)
 
         scatter_renderers = []
 
@@ -766,12 +786,28 @@ class PairPlot(BaseComponent):
                 renderer.visible = False
 
         # Hover tool
+        tooltip_html = (
+            '<div style="max-width: 900px; padding: 10px; background: white; '
+            'border: 1px solid #ccc; border-radius: 4px;">'
+            f'<div style="font-weight: bold; margin-bottom: 5px;">@{{{id_col}}}</div>'
+            '<div style="font-size: 12px; color: #666;">'
+            f'{x_col}: @x{{0.000}} | {y_col}: @y{{0.000}}'
+            "</div>"
+        )
+        if scatter_config.tooltip_image_column:
+            tooltip_html += (
+                '<div style="margin-top: 10px;">'
+                '<img src="@{tooltip_image_url}{safe}" '
+                'style="max-width: 700px; height: auto;" '
+                "onerror=\"this.style.display='none'\">"
+                "</div>"
+            )
+        tooltip_html += "</div>"
+
         hover = HoverTool(
-            tooltips=[
-                (x_col, "@x{0.000}"),
-                (y_col, "@y{0.000}"),
-            ],
+            tooltips=tooltip_html,
             renderers=scatter_renderers,
+            attachment="right",
         )
         p.add_tools(hover)
 
