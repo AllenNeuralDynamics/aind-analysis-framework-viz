@@ -15,7 +15,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 import panel as pn
+from bokeh.layouts import gridplot
 from bokeh.models import (
+    CategoricalColorMapper,
     ColumnDataSource,
     HoverTool,
     LinearColorMapper,
@@ -117,6 +119,7 @@ class ScatterPlot(BaseComponent):
         location.sync(self.y_select, {"value": "sp_y"})
         location.sync(self.color_select, {"value": "sp_color"})
         location.sync(self.group_select, {"value": "sp_group"})
+        location.sync(self.group_applies_to, {"value": "sp_gapply"})
         location.sync(self.shape_select, {"value": "sp_shape"})
         location.sync(self.size_select, {"value": "sp_size"})
         location.sync(self.palette_select, {"value": "sp_palette"})
@@ -128,6 +131,30 @@ class ScatterPlot(BaseComponent):
         location.sync(self.size_range_slider, {"value": "sp_sr"})
         location.sync(self.size_gamma_slider, {"value": "sp_sg"})
         location.sync(self.size_uniform_slider, {"value": "sp_su"})
+        location.sync(self.marginal_toggle, {"value": "sp_marg"})
+        location.sync(self.marginal_stacked, {"value": "sp_mstk"})
+        location.sync(self.marginal_kde, {"value": "sp_mkde"})
+        location.sync(self.marginal_bins_slider, {"value": "sp_mbin"})
+        location.sync(self.marginal_normalize, {"value": "sp_mnorm"})
+        location.sync(self.heatmap_toggle, {"value": "sp_hm"})
+        location.sync(self.heatmap_bins_slider, {"value": "sp_hmb"})
+        location.sync(self.hide_dots, {"value": "sp_hdots"})
+        location.sync(self.aggr_line_width_slider, {"value": "sp_alw"})
+        location.sync(self.hide_color_bar, {"value": "sp_hcb"})
+        location.sync(self.marginal_height_slider, {"value": "sp_mh"})
+        location.sync(self.hide_legend, {"value": "sp_hleg"})
+        location.sync(self.heatmap_alpha_slider, {"value": "sp_hma"})
+        location.sync(self.heatmap_smooth_slider, {"value": "sp_hms"})
+        location.sync(self.aggr_group_toggle, {"value": "sp_agrg"})
+        location.sync(self.aggr_group_method, {"value": "sp_agrgm"})
+        location.sync(self.aggr_group_quantiles, {"value": "sp_agrgq"})
+        location.sync(self.aggr_group_n_quantiles, {"value": "sp_agrgnq"})
+        location.sync(self.aggr_group_smooth, {"value": "sp_agrgsf"})
+        location.sync(self.aggr_all_toggle, {"value": "sp_agra"})
+        location.sync(self.aggr_all_method, {"value": "sp_agram"})
+        location.sync(self.aggr_all_quantiles, {"value": "sp_agraq"})
+        location.sync(self.aggr_all_n_quantiles, {"value": "sp_agranq"})
+        location.sync(self.aggr_all_smooth, {"value": "sp_agrasf"})
 
     def _init_controls(self) -> None:
         """Initialize control widgets for the scatter plot."""
@@ -157,6 +184,13 @@ class ScatterPlot(BaseComponent):
             options=["---"],
             value="---",
             width=180,
+        )
+        self.group_applies_to = pn.widgets.Select(
+            name="Group applies to",
+            options=["Color", "Shape", "Color and Shape"],
+            value="Color",
+            width=180,
+            visible=False,
         )
         self.shape_select = pn.widgets.Select(
             name="Shape By",
@@ -216,19 +250,193 @@ class ScatterPlot(BaseComponent):
         self.color_select.param.watch(self._toggle_color_controls, "value")
         self._toggle_color_controls(None)
 
-        # Alpha slider
-        self.alpha_slider = pn.widgets.FloatSlider(
-            name="Opacity",
+        # Group-applies-to logic: show/hide and disable Color/Shape selectors
+        self.group_select.param.watch(self._toggle_group_applies, "value")
+        self.group_applies_to.param.watch(self._toggle_group_applies, "value")
+        self._toggle_group_applies(None)
+
+        # Marginal distributions toggle
+        self.marginal_toggle = pn.widgets.Checkbox(
+            name="Marginal distributions",
+            value=True,
+            width=180,
+        )
+        self.marginal_stacked = pn.widgets.Checkbox(
+            name="Stack histograms",
+            value=True,
+            width=180,
+        )
+        self.marginal_kde = pn.widgets.Checkbox(
+            name="KDE curve",
+            value=False,
+            width=180,
+        )
+        self.marginal_bins_slider = pn.widgets.IntSlider(
+            name="Histogram bins",
+            start=5,
+            end=100,
+            step=1,
+            value=25,
+            width=180,
+        )
+        self.marginal_normalize = pn.widgets.Checkbox(
+            name="Normalize",
+            value=False,
+            width=180,
+        )
+        self.marginal_height_slider = pn.widgets.IntSlider(
+            name="Histogram height",
+            start=50,
+            end=300,
+            step=10,
+            value=120,
+            width=180,
+        )
+        self.marginal_toggle.param.watch(self._toggle_marginal_controls, "value")
+        self._toggle_marginal_controls(None)
+
+        # 2D heatmap overlay
+        self.heatmap_toggle = pn.widgets.Checkbox(
+            name="2D heatmap",
+            value=False,
+            width=180,
+        )
+        self.heatmap_bins_slider = pn.widgets.IntSlider(
+            name="Heatmap bins",
+            start=10,
+            end=100,
+            step=5,
+            value=30,
+            width=180,
+        )
+        self.hide_dots = pn.widgets.Checkbox(
+            name="Hide dots",
+            value=False,
+            width=180,
+        )
+        self.heatmap_alpha_slider = pn.widgets.FloatSlider(
+            name="Heatmap opacity",
             start=0.1,
             end=1.0,
             step=0.1,
+            value=0.6,
+            width=180,
+        )
+        self.heatmap_smooth_slider = pn.widgets.FloatSlider(
+            name="Smoothing (sigma)",
+            start=0.0,
+            end=5.0,
+            step=0.5,
+            value=0.0,
+            width=180,
+        )
+        self.heatmap_toggle.param.watch(self._toggle_heatmap_controls, "value")
+        self._toggle_heatmap_controls(None)
+
+        # Aggregation options — separate settings per group and all
+        aggr_methods = ["---", "mean", "mean +/- sem", "lowess", "running average", "linear fit"]
+
+        # Group aggregation
+        self.aggr_group_toggle = pn.widgets.Checkbox(
+            name="Aggr each group",
+            value=False,
+            width=180,
+        )
+        self.aggr_group_method = pn.widgets.Select(
+            name="Method (group)",
+            options=aggr_methods,
+            value="lowess",
+            width=180,
+        )
+        self.aggr_group_quantiles = pn.widgets.Checkbox(
+            name="Use quantiles of x (group)",
+            value=False,
+            width=180,
+        )
+        self.aggr_group_n_quantiles = pn.widgets.IntSlider(
+            name="Number of bins (group)",
+            start=1,
+            end=100,
+            step=1,
+            value=20,
+            width=180,
+        )
+        self.aggr_group_smooth = pn.widgets.IntSlider(
+            name="Smooth factor (group)",
+            start=1,
+            end=20,
+            step=1,
+            value=5,
+            width=180,
+        )
+
+        # All aggregation
+        self.aggr_all_toggle = pn.widgets.Checkbox(
+            name="Aggr all",
+            value=False,
+            width=180,
+        )
+        self.aggr_all_method = pn.widgets.Select(
+            name="Method (all)",
+            options=aggr_methods,
+            value="mean +/- sem",
+            width=180,
+        )
+        self.aggr_all_quantiles = pn.widgets.Checkbox(
+            name="Use quantiles of x (all)",
+            value=False,
+            width=180,
+        )
+        self.aggr_all_n_quantiles = pn.widgets.IntSlider(
+            name="Number of bins (all)",
+            start=1,
+            end=100,
+            step=1,
+            value=20,
+            width=180,
+        )
+        self.aggr_all_smooth = pn.widgets.IntSlider(
+            name="Smooth factor (all)",
+            start=1,
+            end=20,
+            step=1,
+            value=5,
+            width=180,
+        )
+
+        for w in [
+            self.aggr_group_toggle, self.aggr_group_method,
+            self.aggr_group_quantiles, self.aggr_group_n_quantiles,
+            self.aggr_group_smooth,
+            self.aggr_all_toggle, self.aggr_all_method,
+            self.aggr_all_quantiles, self.aggr_all_n_quantiles,
+            self.aggr_all_smooth,
+        ]:
+            w.param.watch(self._toggle_aggr_controls, "value")
+        self.group_select.param.watch(self._toggle_aggr_controls, "value")
+        self._toggle_aggr_controls(None)
+
+        # Alpha slider
+        self.alpha_slider = pn.widgets.FloatSlider(
+            name="Opacity",
+            start=0.05,
+            end=1.0,
+            step=0.05,
             value=scatter_config.default_alpha,
+            width=180,
+        )
+        self.aggr_line_width_slider = pn.widgets.FloatSlider(
+            name="Aggr line width",
+            start=0.5,
+            end=10.0,
+            step=0.5,
+            value=3.0,
             width=180,
         )
 
         # Plot settings
         self.width_slider = pn.widgets.IntSlider(
-            name="Width",
+            name="Figure width",
             start=300,
             end=1600,
             step=50,
@@ -236,7 +444,7 @@ class ScatterPlot(BaseComponent):
             width=180,
         )
         self.height_slider = pn.widgets.IntSlider(
-            name="Height",
+            name="Figure height",
             start=250,
             end=1200,
             step=50,
@@ -249,6 +457,16 @@ class ScatterPlot(BaseComponent):
             end=24,
             step=1,
             value=scatter_config.font_size,
+            width=180,
+        )
+        self.hide_color_bar = pn.widgets.Checkbox(
+            name="Hide color bar",
+            value=False,
+            width=180,
+        )
+        self.hide_legend = pn.widgets.Checkbox(
+            name="Hide legend",
+            value=False,
             width=180,
         )
 
@@ -264,6 +482,55 @@ class ScatterPlot(BaseComponent):
         """Get list of all columns from DataFrame."""
         return df.columns.tolist()
 
+    def _toggle_aggr_controls(self, _event) -> None:
+        """Toggle aggregation sub-controls based on toggles."""
+        smooth_methods = {"lowess", "running average"}
+        binned_methods = {"mean", "mean +/- sem"}
+
+        # Group controls — only show when a Group By column is selected
+        has_group = self.group_select.value not in ("---", None, "")
+        self.aggr_group_toggle.visible = has_group
+        group_on = has_group and self.aggr_group_toggle.value
+        group_method = self.aggr_group_method.value
+        self.aggr_group_method.visible = group_on
+        self.aggr_group_smooth.visible = group_on and group_method in smooth_methods
+        group_needs_bins = group_on and group_method in binned_methods
+        self.aggr_group_quantiles.visible = group_needs_bins
+        self.aggr_group_n_quantiles.visible = group_needs_bins
+        if self.aggr_group_quantiles.value:
+            self.aggr_group_n_quantiles.name = "Number of quantiles (group)"
+        else:
+            self.aggr_group_n_quantiles.name = "Number of bins (group)"
+
+        # All controls
+        all_on = self.aggr_all_toggle.value
+        all_method = self.aggr_all_method.value
+        self.aggr_all_method.visible = all_on
+        self.aggr_all_smooth.visible = all_on and all_method in smooth_methods
+        all_needs_bins = all_on and all_method in binned_methods
+        self.aggr_all_quantiles.visible = all_needs_bins
+        self.aggr_all_n_quantiles.visible = all_needs_bins
+        if self.aggr_all_quantiles.value:
+            self.aggr_all_n_quantiles.name = "Number of quantiles (all)"
+        else:
+            self.aggr_all_n_quantiles.name = "Number of bins (all)"
+
+    def _toggle_marginal_controls(self, _event) -> None:
+        """Toggle marginal sub-controls based on marginal toggle."""
+        show = self.marginal_toggle.value
+        self.marginal_stacked.visible = show
+        self.marginal_kde.visible = show
+        self.marginal_bins_slider.visible = show
+        self.marginal_normalize.visible = show
+        self.marginal_height_slider.visible = show
+
+    def _toggle_heatmap_controls(self, _event) -> None:
+        """Toggle heatmap sub-controls based on heatmap toggle."""
+        show = self.heatmap_toggle.value
+        self.heatmap_bins_slider.visible = show
+        self.heatmap_alpha_slider.visible = show
+        self.heatmap_smooth_slider.visible = show
+
     def _toggle_size_controls(self, _event) -> None:
         """Toggle size controls based on size-by selection."""
         is_uniform = self.size_select.value in ("---", None, "")
@@ -273,9 +540,29 @@ class ScatterPlot(BaseComponent):
 
     def _toggle_color_controls(self, _event) -> None:
         """Toggle palette controls based on color-by selection."""
-        show_controls = self.color_select.value not in ("---", None, "")
+        # Show palette controls if either color_select or group overrides color
+        has_group = self.group_select.value not in ("---", None, "")
+        applies = self.group_applies_to.value
+        group_overrides_color = has_group and applies in ("Color", "Color and Shape")
+        has_color = self.color_select.value not in ("---", None, "")
+        show_controls = has_color or group_overrides_color
         self.palette_select.visible = show_controls
         self.reverse_colors_toggle.visible = show_controls
+
+    def _toggle_group_applies(self, _event) -> None:
+        """Toggle group-applies-to dropdown and disable overridden selectors."""
+        has_group = self.group_select.value not in ("---", None, "")
+        self.group_applies_to.visible = has_group
+
+        applies = self.group_applies_to.value
+        overrides_color = has_group and applies in ("Color", "Color and Shape")
+        overrides_shape = has_group and applies in ("Shape", "Color and Shape")
+
+        self.color_select.disabled = overrides_color
+        self.shape_select.disabled = overrides_shape
+
+        # Keep palette controls in sync
+        self._toggle_color_controls(None)
 
     def _update_column_options(self, df: pd.DataFrame) -> None:
         """Update dropdown options based on available columns.
@@ -370,6 +657,256 @@ class ScatterPlot(BaseComponent):
             else:
                 self.size_select.value = "---"
 
+    def _compute_aggregation(
+        self,
+        x: np.ndarray,
+        y: np.ndarray,
+        method: str,
+        smooth_factor: int = 5,
+        use_quantiles: bool = False,
+        n_quantiles: int = 20,
+    ) -> dict:
+        """Compute aggregation curves for x/y data.
+
+        Returns dict with keys:
+        - 'x': x values for the curve
+        - 'y': y values for the curve
+        - 'y_upper': upper bound (for mean +/- sem)
+        - 'y_lower': lower bound (for mean +/- sem)
+        """
+        if len(x) < 2:
+            return {}
+
+        # Sort by x
+        sort_idx = np.argsort(x)
+        x_sorted = x[sort_idx]
+        y_sorted = y[sort_idx]
+
+        # Remove NaN
+        valid = np.isfinite(x_sorted) & np.isfinite(y_sorted)
+        x_sorted = x_sorted[valid]
+        y_sorted = y_sorted[valid]
+        if len(x_sorted) < 2:
+            return {}
+
+        if use_quantiles:
+            # Bin x into quantiles and compute stats per bin
+            quantile_edges = np.quantile(x_sorted, np.linspace(0, 1, n_quantiles + 1))
+            bin_indices = np.digitize(x_sorted, quantile_edges[1:-1])
+            x_binned = []
+            y_binned = []
+            y_sem = []
+            for i in range(n_quantiles):
+                mask = bin_indices == i
+                if mask.sum() == 0:
+                    continue
+                x_binned.append(np.mean(x_sorted[mask]))
+                y_binned.append(np.mean(y_sorted[mask]))
+                y_sem.append(
+                    np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
+                    if mask.sum() > 1
+                    else 0
+                )
+            x_sorted = np.array(x_binned)
+            y_sorted = np.array(y_binned)
+            y_sem_arr = np.array(y_sem)
+            if len(x_sorted) < 2:
+                return {}
+
+        if method in ("mean", "mean +/- sem"):
+            # Detect discrete x: use exact grouping unless user explicitly requests quantile binning
+            unique_x = np.unique(x_sorted)
+            is_discrete = not use_quantiles and len(unique_x) <= max(n_quantiles, 50)
+
+            if is_discrete:
+                # Group by exact x values
+                x_means, y_means, y_sems = [], [], []
+                for xval in unique_x:
+                    mask = x_sorted == xval
+                    x_means.append(xval)
+                    y_means.append(np.mean(y_sorted[mask]))
+                    y_sems.append(
+                        np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
+                        if mask.sum() > 1
+                        else 0
+                    )
+            elif use_quantiles:
+                # Already binned above into quantiles
+                if method == "mean":
+                    return {"x": x_sorted, "y": y_sorted}
+                else:
+                    return {
+                        "x": x_sorted,
+                        "y": y_sorted,
+                        "y_upper": y_sorted + y_sem_arr,
+                        "y_lower": y_sorted - y_sem_arr,
+                    }
+            else:
+                # Equal-width bins
+                n_bins = max(2, n_quantiles)
+                bin_edges = np.linspace(x_sorted.min(), x_sorted.max(), n_bins + 1)
+                bin_idx = np.digitize(x_sorted, bin_edges[1:-1])
+                x_means, y_means, y_sems = [], [], []
+                for i in range(n_bins):
+                    mask = bin_idx == i
+                    if mask.sum() > 0:
+                        x_means.append(np.mean(x_sorted[mask]))
+                        y_means.append(np.mean(y_sorted[mask]))
+                        y_sems.append(
+                            np.std(y_sorted[mask], ddof=1) / np.sqrt(mask.sum())
+                            if mask.sum() > 1
+                            else 0
+                        )
+
+            x_arr = np.array(x_means)
+            y_arr = np.array(y_means)
+            if method == "mean":
+                return {"x": x_arr, "y": y_arr}
+            sem_arr = np.array(y_sems)
+            return {
+                "x": x_arr,
+                "y": y_arr,
+                "y_upper": y_arr + sem_arr,
+                "y_lower": y_arr - sem_arr,
+            }
+
+        elif method == "lowess":
+            # Gaussian-weighted local regression (no statsmodels dependency)
+            # smooth_factor (1-20) maps to bandwidth as fraction of x range:
+            # 1 -> 1% (very local), 20 -> 20% (very smooth)
+            x_range = x_sorted.max() - x_sorted.min()
+            if x_range == 0:
+                return {}
+            bandwidth = (smooth_factor / 100.0) * x_range
+            n_points = min(200, len(x_sorted))
+            x_grid = np.linspace(x_sorted.min(), x_sorted.max(), n_points)
+            y_smooth = np.empty(n_points)
+            for i, xi in enumerate(x_grid):
+                weights = np.exp(-0.5 * ((x_sorted - xi) / bandwidth) ** 2)
+                w_sum = weights.sum()
+                if w_sum > 0:
+                    y_smooth[i] = np.average(y_sorted, weights=weights)
+                else:
+                    y_smooth[i] = np.nan
+            return {"x": x_grid, "y": y_smooth}
+
+        elif method == "running average":
+            window = max(1, smooth_factor)
+            if len(y_sorted) < window:
+                return {"x": x_sorted, "y": y_sorted}
+            kernel = np.ones(window) / window
+            y_smooth = np.convolve(y_sorted, kernel, mode="valid")
+            # Trim x to match
+            offset = (window - 1) // 2
+            x_smooth = x_sorted[offset : offset + len(y_smooth)]
+            return {"x": x_smooth, "y": y_smooth}
+
+        elif method == "linear fit":
+            from scipy import stats
+
+            slope, intercept, r_value, p_value, _std_err = stats.linregress(x_sorted, y_sorted)
+            x_fit = np.array([x_sorted.min(), x_sorted.max()])
+            y_fit = slope * x_fit + intercept
+            return {"x": x_fit, "y": y_fit, "r2": r_value**2, "p": p_value}
+
+        return {}
+
+    def _render_aggr_on_figure(
+        self,
+        p,
+        df_valid: pd.DataFrame,
+        x_col: str,
+        y_col: str,
+        group_column: str | None,
+        color_mapper,
+        aggr_group: bool,
+        aggr_group_method: str,
+        aggr_group_quantiles: bool,
+        aggr_group_n_quantiles: int,
+        aggr_group_smooth: int,
+        aggr_all: bool,
+        aggr_all_method: str,
+        aggr_all_quantiles: bool,
+        aggr_all_n_quantiles: int,
+        aggr_all_smooth: int,
+        aggr_line_width: float = 3.0,
+    ) -> None:
+        """Render aggregation curves on the scatter plot figure."""
+        from bokeh.models import Band, ColumnDataSource as CDS
+
+        x_numeric = pd.to_numeric(df_valid[x_col], errors="coerce").values
+        y_numeric = pd.to_numeric(df_valid[y_col], errors="coerce").values
+
+        # Aggregate each group
+        if aggr_group and aggr_group_method != "---" and group_column and group_column in df_valid.columns:
+            group_values = df_valid[group_column].fillna("N/A").astype(str)
+            unique_groups = list(pd.unique(group_values))
+
+            # Get group colors from color_mapper if categorical
+            color_map = {}
+            if isinstance(color_mapper, CategoricalColorMapper):
+                color_map = dict(zip(color_mapper.factors, color_mapper.palette))
+
+            for group in unique_groups:
+                mask = (group_values == group).values
+                x_g = x_numeric[mask].astype(float)
+                y_g = y_numeric[mask].astype(float)
+                color = color_map.get(group, "#333333")
+
+                result = self._compute_aggregation(
+                    x_g, y_g, aggr_group_method, aggr_group_smooth,
+                    aggr_group_quantiles, aggr_group_n_quantiles,
+                )
+                if not result:
+                    continue
+
+                line_kwargs = {"line_color": color, "line_width": aggr_line_width, "line_alpha": 0.9}
+                if "p" in result and "r2" in result:
+                    line_kwargs["line_dash"] = "solid" if result["p"] < 0.05 else "dashed"
+                    stars = "***" if result["p"] < 0.001 else "**" if result["p"] < 0.01 else "*" if result["p"] < 0.05 else ""
+                    label = f"{group} (R²={result['r2']:.3f}, p={result['p']:.2e}{stars})"
+                    line_kwargs["legend_label"] = label
+                p.line(result["x"], result["y"], **line_kwargs)
+                if "y_upper" in result and "y_lower" in result:
+                    band_source = CDS(
+                        data={"x": result["x"], "upper": result["y_upper"], "lower": result["y_lower"]}
+                    )
+                    band = Band(
+                        base="x", upper="upper", lower="lower", source=band_source,
+                        fill_color=color, fill_alpha=0.2, line_color=color, line_alpha=0.3,
+                    )
+                    p.add_layout(band)
+
+        # Aggregate all
+        if aggr_all and aggr_all_method != "---":
+            x_all = x_numeric.astype(float)
+            y_all = y_numeric.astype(float)
+
+            result = self._compute_aggregation(
+                x_all, y_all, aggr_all_method, aggr_all_smooth,
+                aggr_all_quantiles, aggr_all_n_quantiles,
+            )
+            if result:
+                all_line_kwargs = {
+                    "line_color": "black",
+                    "line_width": aggr_line_width * 1.5,
+                    "line_alpha": 0.9,
+                }
+                if "p" in result and "r2" in result:
+                    all_line_kwargs["line_dash"] = "solid" if result["p"] < 0.05 else "dashed"
+                    stars = "***" if result["p"] < 0.001 else "**" if result["p"] < 0.01 else "*" if result["p"] < 0.05 else ""
+                    all_line_kwargs["legend_label"] = f"All (R²={result['r2']:.3f}, p={result['p']:.2e}{stars})"
+                p.line(result["x"], result["y"], **all_line_kwargs)
+                if "y_upper" in result and "y_lower" in result:
+                    band_source = CDS(
+                        data={"x": result["x"], "upper": result["y_upper"], "lower": result["y_lower"]}
+                    )
+                    band = Band(
+                        base="x", upper="upper", lower="lower", source=band_source,
+                        fill_color="black", fill_alpha=0.15, line_color="black", line_alpha=0.3,
+                    )
+                    p.add_layout(band)
+
     def _build_tooltip_html(self) -> str:
         """Build HTML template for hover tooltip."""
         scatter_config = self.config.scatter_plot
@@ -423,6 +960,30 @@ class ScatterPlot(BaseComponent):
         size_range: tuple[int, int],
         size_gamma: float,
         uniform_size: int,
+        show_marginals: bool = True,
+        marginal_stacked: bool = True,
+        marginal_kde: bool = False,
+        marginal_bins: int = 25,
+        marginal_normalize: bool = False,
+        marginal_height: int = 120,
+        hide_dots: bool = False,
+        hide_color_bar: bool = False,
+        hide_legend: bool = False,
+        show_heatmap: bool = False,
+        heatmap_bins: int = 30,
+        heatmap_alpha: float = 0.6,
+        heatmap_smooth: float = 0.0,
+        aggr_group: bool = False,
+        aggr_group_method: str = "lowess",
+        aggr_group_quantiles: bool = False,
+        aggr_group_n_quantiles: int = 20,
+        aggr_group_smooth: int = 5,
+        aggr_all: bool = False,
+        aggr_all_method: str = "mean +/- sem",
+        aggr_all_quantiles: bool = False,
+        aggr_all_n_quantiles: int = 20,
+        aggr_all_smooth: int = 5,
+        aggr_line_width: float = 3.0,
     ):
         """Create the Bokeh scatter plot figure."""
         scatter_config = self.config.scatter_plot
@@ -560,6 +1121,44 @@ class ScatterPlot(BaseComponent):
             active_scroll="wheel_zoom",
         )
 
+        # 2D heatmap overlay (rendered first so scatter points appear on top)
+        if show_heatmap and not x_is_datetime and not y_is_datetime:
+            x_hm = pd.to_numeric(df_valid[x_col], errors="coerce").dropna()
+            y_hm = pd.to_numeric(df_valid[y_col], errors="coerce").dropna()
+            common_idx = x_hm.index.intersection(y_hm.index)
+            if len(common_idx) >= 2:
+                x_vals = x_hm.loc[common_idx].values
+                y_vals = y_hm.loc[common_idx].values
+                heatmap_data, xedges, yedges = np.histogram2d(
+                    x_vals, y_vals, bins=int(heatmap_bins)
+                )
+                # Transpose so rows=y, cols=x for Bokeh image
+                heatmap_data = heatmap_data.T.astype(float)
+                # Apply gaussian smoothing if sigma > 0
+                if heatmap_smooth > 0:
+                    from scipy.ndimage import gaussian_filter
+
+                    heatmap_data = gaussian_filter(heatmap_data, sigma=heatmap_smooth)
+                # Mask zero bins as NaN so they're transparent
+                heatmap_data[heatmap_data == 0] = np.nan
+                from bokeh.palettes import Turbo256
+
+                hm_mapper = LinearColorMapper(
+                    palette=Turbo256,
+                    low=np.nanmin(heatmap_data),
+                    high=np.nanmax(heatmap_data),
+                    nan_color=(0, 0, 0, 0),
+                )
+                p.image(
+                    image=[heatmap_data],
+                    x=xedges[0],
+                    y=yedges[0],
+                    dw=xedges[-1] - xedges[0],
+                    dh=yedges[-1] - yedges[0],
+                    color_mapper=hm_mapper,
+                    global_alpha=heatmap_alpha,
+                )
+
         markers = [
             "circle",
             "square",
@@ -597,14 +1196,6 @@ class ScatterPlot(BaseComponent):
             }
             source_data[shape_column] = shape_values.values
             source_data["marker"] = shape_values.map(shape_map).values
-        elif group_column and group_column in df_valid.columns:
-            group_values = df_valid[group_column].fillna("N/A").astype(str)
-            unique_groups = list(pd.unique(group_values))
-            group_map = {
-                value: markers[index % len(markers)] for index, value in enumerate(unique_groups)
-            }
-            source_data[group_column] = group_values.values
-            source_data["marker"] = group_values.map(group_map).values
         else:
             source_data["marker"] = ["circle"] * len(df_valid)
         scatter_renderers = []
@@ -689,6 +1280,11 @@ class ScatterPlot(BaseComponent):
                 )
                 scatter_renderers.append(legend_renderer)
 
+        # Hide dots when user opted to hide them
+        if hide_dots:
+            for renderer in scatter_renderers:
+                renderer.visible = False
+
         # Add hover tool
         hover = HoverTool(
             tooltips=self._build_tooltip_html(),
@@ -733,14 +1329,26 @@ class ScatterPlot(BaseComponent):
         if doc is not None:
             doc.add_next_tick_callback(reapply_selection)
 
+        # Render aggregation curves
+        if (aggr_group or aggr_all) and not x_is_datetime and not y_is_datetime:
+            self._render_aggr_on_figure(
+                p, df_valid, x_col, y_col, group_column, color_mapper,
+                aggr_group, aggr_group_method,
+                aggr_group_quantiles, aggr_group_n_quantiles, aggr_group_smooth,
+                aggr_all, aggr_all_method,
+                aggr_all_quantiles, aggr_all_n_quantiles, aggr_all_smooth,
+                aggr_line_width,
+            )
+
         # Add color bar for continuous mappings
-        if color_column:
+        if color_column and not hide_color_bar:
             add_color_bar(p, color_mapper, color_column, font_size=font_size)
 
         if scatter_renderers and p.legend:
             legend = p.legend[0]
             legend.click_policy = "hide"
             legend.location = "center"
+            legend.visible = not hide_legend
             p.add_layout(legend, "right")
 
         # Style the plot
@@ -754,7 +1362,187 @@ class ScatterPlot(BaseComponent):
         p.yaxis.major_label_text_font_size = f"{tick_size}pt"
 
         self._latest_figure = p
-        return pn.pane.Bokeh(p, sizing_mode="stretch_width")
+
+        if not show_marginals or x_is_datetime or y_is_datetime:
+            return pn.pane.Bokeh(p, sizing_mode="stretch_width")
+
+        # --- Marginal histograms ---
+        marginal_height = int(marginal_height)
+        marginal_width = marginal_height
+
+        x_numeric = pd.to_numeric(df_valid[x_col], errors="coerce")
+        y_numeric = pd.to_numeric(df_valid[y_col], errors="coerce")
+        x_valid_mask = x_numeric.notna()
+        y_valid_mask = y_numeric.notna()
+
+        if x_valid_mask.sum() < 2 or y_valid_mask.sum() < 2:
+            return pn.pane.Bokeh(p, sizing_mode="stretch_width")
+
+        n_bins = int(marginal_bins)
+
+        # Build category-color groups for stacked marginals
+        is_categorical_color = (
+            color_column
+            and color_column in df_valid.columns
+            and isinstance(color_mapper, CategoricalColorMapper)
+        )
+        if is_categorical_color:
+            factors = color_mapper.factors
+            palette = color_mapper.palette
+            color_map = dict(zip(factors, palette))
+            cat_values = df_valid[color_column].fillna("N/A").astype(str)
+            groups = [(cat, color_map.get(cat, "#808080")) for cat in factors]
+        else:
+            groups = [("all", "#3B82F6")]
+            cat_values = pd.Series(["all"] * len(df_valid), index=df_valid.index)
+
+        # Shared bin edges across all groups
+        x_all = x_numeric[x_valid_mask].values
+        y_all = y_numeric[y_valid_mask].values
+        x_edges = np.histogram_bin_edges(x_all, bins=n_bins)
+        y_edges = np.histogram_bin_edges(y_all, bins=n_bins)
+
+        hist_alpha = 0.6 if marginal_stacked else 0.4
+
+        # Top marginal (X distribution)
+        p_top = figure(
+            width=int(plot_width),
+            height=marginal_height,
+            x_range=p.x_range,
+            tools="",
+            toolbar_location=None,
+        )
+        x_bottom = np.zeros(len(x_edges) - 1)
+        for cat, color in groups:
+            mask = (cat_values == cat) & x_valid_mask
+            if not mask.any():
+                continue
+            hist, _ = np.histogram(x_numeric[mask].values, bins=x_edges)
+            hist = hist.astype(float)
+            if marginal_normalize and hist.sum() > 0:
+                bin_width = x_edges[1] - x_edges[0]
+                hist = hist / (hist.sum() * bin_width)
+            if marginal_stacked:
+                p_top.quad(
+                    top=x_bottom + hist,
+                    bottom=x_bottom,
+                    left=x_edges[:-1],
+                    right=x_edges[1:],
+                    fill_color=color,
+                    line_color="white",
+                    fill_alpha=hist_alpha,
+                )
+                x_bottom = x_bottom + hist
+            else:
+                p_top.quad(
+                    top=hist,
+                    bottom=0,
+                    left=x_edges[:-1],
+                    right=x_edges[1:],
+                    fill_color=color,
+                    line_color=color,
+                    fill_alpha=hist_alpha,
+                )
+
+        # KDE curves for top marginal
+        if marginal_kde:
+            for cat, color in groups:
+                mask = (cat_values == cat) & x_valid_mask
+                vals = x_numeric[mask].values
+                if len(vals) < 2:
+                    continue
+                try:
+                    from scipy.stats import gaussian_kde
+
+                    kde = gaussian_kde(vals)
+                    x_grid = np.linspace(x_all.min(), x_all.max(), 200)
+                    density = kde(x_grid)
+                    if not marginal_normalize:
+                        bin_width = x_edges[1] - x_edges[0]
+                        density = density * len(vals) * bin_width
+                    p_top.line(x_grid, density, line_color=color, line_width=2)
+                except Exception:
+                    pass
+
+        p_top.xaxis.visible = False
+        p_top.yaxis.visible = False
+        p_top.background_fill_color = None
+        p_top.border_fill_color = None
+        p_top.outline_line_color = None
+        p_top.min_border = 0
+
+        # Right marginal (Y distribution)
+        p_right = figure(
+            width=marginal_width,
+            height=int(plot_height),
+            y_range=p.y_range,
+            tools="",
+            toolbar_location=None,
+        )
+        y_left = np.zeros(len(y_edges) - 1)
+        for cat, color in groups:
+            mask = (cat_values == cat) & y_valid_mask
+            if not mask.any():
+                continue
+            hist, _ = np.histogram(y_numeric[mask].values, bins=y_edges)
+            hist = hist.astype(float)
+            if marginal_normalize and hist.sum() > 0:
+                bin_width = y_edges[1] - y_edges[0]
+                hist = hist / (hist.sum() * bin_width)
+            if marginal_stacked:
+                p_right.quad(
+                    top=y_edges[1:],
+                    bottom=y_edges[:-1],
+                    left=y_left,
+                    right=y_left + hist,
+                    fill_color=color,
+                    line_color="white",
+                    fill_alpha=hist_alpha,
+                )
+                y_left = y_left + hist
+            else:
+                p_right.quad(
+                    top=y_edges[1:],
+                    bottom=y_edges[:-1],
+                    left=0,
+                    right=hist,
+                    fill_color=color,
+                    line_color=color,
+                    fill_alpha=hist_alpha,
+                )
+
+        # KDE curves for right marginal
+        if marginal_kde:
+            for cat, color in groups:
+                mask = (cat_values == cat) & y_valid_mask
+                vals = y_numeric[mask].values
+                if len(vals) < 2:
+                    continue
+                try:
+                    from scipy.stats import gaussian_kde
+
+                    kde = gaussian_kde(vals)
+                    y_grid = np.linspace(y_all.min(), y_all.max(), 200)
+                    density = kde(y_grid)
+                    if not marginal_normalize:
+                        bin_width = y_edges[1] - y_edges[0]
+                        density = density * len(vals) * bin_width
+                    p_right.line(density, y_grid, line_color=color, line_width=2)
+                except Exception:
+                    pass
+
+        p_right.xaxis.visible = False
+        p_right.yaxis.visible = False
+        p_right.background_fill_color = None
+        p_right.border_fill_color = None
+        p_right.outline_line_color = None
+        p_right.min_border = 0
+
+        layout = gridplot(
+            [[p_top, None], [p, p_right]],
+            merge_tools=False,
+        )
+        return pn.pane.Bokeh(layout, sizing_mode="stretch_width")
 
     def _render_plot(
         self,
@@ -763,6 +1551,7 @@ class ScatterPlot(BaseComponent):
         y_col: str,
         color_col: str,
         group_col: str,
+        group_applies_to: str,
         shape_col: str,
         size_col: str,
         palette: str,
@@ -774,6 +1563,30 @@ class ScatterPlot(BaseComponent):
         size_range: tuple[int, int],
         size_gamma: float,
         uniform_size: int,
+        show_marginals: bool = True,
+        marginal_stacked: bool = True,
+        marginal_kde: bool = False,
+        marginal_bins: int = 25,
+        marginal_normalize: bool = False,
+        marginal_height: int = 120,
+        hide_dots: bool = False,
+        hide_color_bar: bool = False,
+        hide_legend: bool = False,
+        show_heatmap: bool = False,
+        heatmap_bins: int = 30,
+        heatmap_alpha: float = 0.6,
+        heatmap_smooth: float = 0.0,
+        aggr_group: bool = False,
+        aggr_group_method: str = "lowess",
+        aggr_group_quantiles: bool = False,
+        aggr_group_n_quantiles: int = 20,
+        aggr_group_smooth: int = 5,
+        aggr_all: bool = False,
+        aggr_all_method: str = "mean +/- sem",
+        aggr_all_quantiles: bool = False,
+        aggr_all_n_quantiles: int = 20,
+        aggr_all_smooth: int = 5,
+        aggr_line_width: float = 3.0,
     ):
         """Render the scatter plot with current settings."""
         try:
@@ -788,6 +1601,30 @@ class ScatterPlot(BaseComponent):
             group_col = self.group_select.value or group_col
             shape_col = self.shape_select.value or shape_col
             size_col = self.size_select.value or size_col
+
+            # Apply group overrides for color/shape
+            has_group = group_col not in ("---", None, "")
+            if has_group:
+                applies = self.group_applies_to.value
+                if applies in ("Color", "Color and Shape"):
+                    color_col = group_col
+                if applies in ("Shape", "Color and Shape"):
+                    shape_col = group_col
+
+            # Hide bins/quantiles controls when x is discrete
+            binned_methods = {"mean", "mean +/- sem"}
+            group_needs_bins = aggr_group and aggr_group_method in binned_methods
+            all_needs_bins = aggr_all and aggr_all_method in binned_methods
+            if (group_needs_bins or all_needs_bins) and df is not None and not df.empty and x_col in df.columns:
+                x_unique = df[x_col].dropna().nunique()
+                if group_needs_bins:
+                    is_discrete_g = not aggr_group_quantiles and x_unique <= max(aggr_group_n_quantiles, 50)
+                    self.aggr_group_quantiles.visible = True
+                    self.aggr_group_n_quantiles.visible = not is_discrete_g
+                if all_needs_bins:
+                    is_discrete_a = not aggr_all_quantiles and x_unique <= max(aggr_all_n_quantiles, 50)
+                    self.aggr_all_quantiles.visible = True
+                    self.aggr_all_n_quantiles.visible = not is_discrete_a
 
             plot_width = int(plot_width)
             if group_col not in (None, "", "---") or shape_col not in (None, "", "---"):
@@ -810,6 +1647,30 @@ class ScatterPlot(BaseComponent):
                 size_range,
                 size_gamma,
                 uniform_size,
+                show_marginals,
+                marginal_stacked,
+                marginal_kde,
+                marginal_bins,
+                marginal_normalize,
+                marginal_height,
+                hide_dots,
+                hide_color_bar,
+                hide_legend,
+                show_heatmap,
+                heatmap_bins,
+                heatmap_alpha,
+                heatmap_smooth,
+                aggr_group,
+                aggr_group_method,
+                aggr_group_quantiles,
+                aggr_group_n_quantiles,
+                aggr_group_smooth,
+                aggr_all,
+                aggr_all_method,
+                aggr_all_quantiles,
+                aggr_all_n_quantiles,
+                aggr_all_smooth,
+                aggr_line_width,
             )
         except Exception as e:
             logger.error(f"Error rendering scatter plot: {e}")
@@ -846,12 +1707,45 @@ class ScatterPlot(BaseComponent):
             self.shape_select,
             pn.layout.Divider(),
             self.group_select,
+            self.group_applies_to,
+            pn.layout.Divider(),
+            # Aggregation (group)
+            self.aggr_group_toggle,
+            self.aggr_group_method,
+            self.aggr_group_quantiles,
+            self.aggr_group_n_quantiles,
+            self.aggr_group_smooth,
+            pn.layout.Divider(),
+            # Aggregation (all)
+            self.aggr_all_toggle,
+            self.aggr_all_method,
+            self.aggr_all_quantiles,
+            self.aggr_all_n_quantiles,
+            self.aggr_all_smooth,
+            pn.layout.Divider(),
+            # Marginal distributions
+            self.marginal_toggle,
+            self.marginal_bins_slider,
+            self.marginal_stacked,
+            self.marginal_normalize,
+            self.marginal_kde,
+            pn.layout.Divider(),
+            # 2D heatmap
+            self.heatmap_toggle,
+            self.heatmap_bins_slider,
+            self.heatmap_smooth_slider,
+            self.heatmap_alpha_slider,
             pn.layout.Divider(),
             # Plot settings
             pn.Card(
+                self.hide_dots,
+                self.hide_color_bar,
+                self.hide_legend,
                 self.alpha_slider,
+                self.aggr_line_width_slider,
                 self.width_slider,
                 self.height_slider,
+                self.marginal_height_slider,
                 self.font_size_slider,
                 title="More settings",
                 collapsed=True,
@@ -870,6 +1764,7 @@ class ScatterPlot(BaseComponent):
             y_col=self.y_select,
             color_col=self.color_select,
             group_col=self.group_select,
+            group_applies_to=self.group_applies_to,
             shape_col=self.shape_select,
             size_col=self.size_select,
             palette=self.palette_select,
@@ -881,6 +1776,30 @@ class ScatterPlot(BaseComponent):
             size_range=self.size_range_slider,
             size_gamma=self.size_gamma_slider,
             uniform_size=self.size_uniform_slider,
+            show_marginals=self.marginal_toggle,
+            marginal_stacked=self.marginal_stacked,
+            marginal_kde=self.marginal_kde,
+            marginal_bins=self.marginal_bins_slider,
+            marginal_normalize=self.marginal_normalize,
+            marginal_height=self.marginal_height_slider,
+            hide_dots=self.hide_dots,
+            hide_color_bar=self.hide_color_bar,
+            hide_legend=self.hide_legend,
+            show_heatmap=self.heatmap_toggle,
+            heatmap_bins=self.heatmap_bins_slider,
+            heatmap_alpha=self.heatmap_alpha_slider,
+            heatmap_smooth=self.heatmap_smooth_slider,
+            aggr_group=self.aggr_group_toggle,
+            aggr_group_method=self.aggr_group_method,
+            aggr_all=self.aggr_all_toggle,
+            aggr_all_method=self.aggr_all_method,
+            aggr_group_quantiles=self.aggr_group_quantiles,
+            aggr_group_n_quantiles=self.aggr_group_n_quantiles,
+            aggr_group_smooth=self.aggr_group_smooth,
+            aggr_all_quantiles=self.aggr_all_quantiles,
+            aggr_all_n_quantiles=self.aggr_all_n_quantiles,
+            aggr_all_smooth=self.aggr_all_smooth,
+            aggr_line_width=self.aggr_line_width_slider,
         )
 
         # Side-by-side layout: controls on left, plot on right
